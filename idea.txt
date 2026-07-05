@@ -1,0 +1,24 @@
+I want to create an ankiAddon that helps keep Anki intresting. 
+
+The general Premise is that you'll do flashcards and you'll get coins and XP for doing the flashcards. As you level up, you'll unlock new animals and you can spend the coins that you earn to add those animals that you've unlocked to your zoo. 
+
+art style 
+I think I want the art style to be kind of retro pixelated for the animals and the zoo. 
+
+The leveling system
+The way that the leveling system will work is you will get experience points for every card that you get right. You won't get any experience for cards that you get incorrect.
+
+Coins
+I want coins to feel like a valuable resource within the game. With the user only getting one coin for every Flashcard they get right. However, I would like to integrate a Pomodoro timer that if the user completes flashcards throughout that duration, they'll get a bonus reward of coins In the form of a loop box that will drop between twenty to a hundred coins with the amount of coins earned being more rare as it gets higher.
+
+Animals 
+I don't have a defined list of animals right now, but I would like a wide variety from different ecosystems with the general idea that cooler animals, i.e. bigger or more rare animals, are going to be locked behind higher XP level restrictions and cost more coins.
+
+Zoo
+The zoo window should kind of open up on a separate tab when it's clicked and it will display a grid that the user can spin coins to expand and then spin coins to add animals to the zoo. 
+
+Daily quests
+I think the idea of daily quests, maybe up to three daily quests, that will require the user to either do a certain amount of flashcards, do so many new flashcards, or get so many flashcards correct in a row would be an interesting idea and that would either award the user with coins or An animal that they could add to their zoo.
+
+Main page
+On the main page of Anki, I think it would be nice to have it  display the user's zoo level and Some sort of badge system in the same way that in the military when they rank up they have different insignias for that.

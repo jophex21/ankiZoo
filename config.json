@@ -1,0 +1,15 @@
+{
+    "xpPerCard": 1,
+    "coinsPerCard": 1,
+    "levelCurveBase": 4,
+    "pomodoroMinutes": 25,
+    "dailyQuestCount": 3,
+    "tileExpandBaseCost": 25,
+    "tileExpandCostPerOwned": 8,
+    "notificationsEnabled": true,
+    "lootBox": {
+        "common": {"min": 20, "max": 40, "weight": 60},
+        "uncommon": {"min": 41, "max": 70, "weight": 30},
+        "rare": {"min": 71, "max": 100, "weight": 10}
+    }
+}

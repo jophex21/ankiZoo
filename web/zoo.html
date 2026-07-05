@@ -1,0 +1,43 @@
+<div class="az-app">
+    <header class="az-header">
+        <div class="az-header-left">
+            <span class="az-rank" id="az-header-rank">Trainee</span>
+            <span class="az-level" id="az-header-level">Lv. 0</span>
+        </div>
+        <div class="az-xp-bar"><div class="az-xp-fill" id="az-header-xp-fill" style="width:0%;"></div></div>
+        <div class="az-xp-label" id="az-header-xp-label"></div>
+        <div class="az-coins" id="az-header-coins">0</div>
+    </header>
+
+    <nav class="az-tabs">
+        <button class="az-tab-btn active" data-tab="zoo">Zoo</button>
+        <button class="az-tab-btn" data-tab="collection">Collection</button>
+        <button class="az-tab-btn" data-tab="quests">Quests</button>
+        <button class="az-tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <main class="az-main">
+        <section id="az-tab-zoo" class="az-tab-panel active">
+            <div class="az-grid" id="az-grid"></div>
+        </section>
+        <section id="az-tab-collection" class="az-tab-panel">
+            <div class="az-dex" id="az-dex"></div>
+        </section>
+        <section id="az-tab-quests" class="az-tab-panel">
+            <div class="az-quests" id="az-quests"></div>
+        </section>
+        <section id="az-tab-settings" class="az-tab-panel">
+            <div class="az-settings">
+                <h3>Reset Progress</h3>
+                <p>Permanently erases your XP, coins, unlocked animals, zoo layout, and quests for this profile. This cannot be undone.</p>
+                <button id="az-reset-btn" class="az-reset-btn">Reset All Progress</button>
+            </div>
+        </section>
+    </main>
+
+    <div class="az-toast-container" id="az-toast-container"></div>
+
+    <div class="az-modal-overlay" id="az-modal-overlay">
+        <div class="az-modal" id="az-modal"></div>
+    </div>
+</div>
