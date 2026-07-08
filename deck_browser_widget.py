@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import html
 import json
+import os
 from typing import Any
 
 from aqt import mw
 from aqt.deckbrowser import DeckBrowser
 
 from . import animals as animals_module
+from . import config as config_module
 from . import leveling
+from . import quests as quests_module
+from . import sprite_render
 from .zoo_data import get_zoo_data
+
+RANK_SPRITE_COLS = 10
+RANK_SPRITE_ROWS = 5
+RANK_SPRITE_MAX_LEVEL = RANK_SPRITE_COLS * RANK_SPRITE_ROWS
+ASSETS_DIR = os.path.join(animals_module.SPRITES_DIR, "assets")
 
 TOAST_ASSETS = """
 <style>
@@ -49,68 +58,145 @@ window.AnkiZooToast = window.AnkiZooToast || {
 
 WIDGET_CSS = """
 <style>
-.ankizoo-widget { display: flex; align-items: center; gap: 14px; background: var(--canvas-elevated, #f5f5f5);
-    border: 1px solid var(--border, #ddd); border-radius: 14px; padding: 12px 16px; margin: 12px auto; max-width: 420px;
-    cursor: pointer; font-family: -apple-system, sans-serif; user-select: none; }
-.ankizoo-widget:hover { border-color: var(--border-focus, #999); }
-.ankizoo-widget .az-hero { width: 48px; height: 48px; image-rendering: pixelated; flex-shrink: 0; }
+.ankizoo-widget { position: relative; display: flex; background: var(--az-bg, #1f232b);
+    border: 2px solid var(--az-border, #3f9142); border-radius: 14px; padding: 10px 14px; margin: 12px auto; width: 100%; max-width: 720px;
+    box-sizing: border-box; overflow: hidden; cursor: pointer; font-family: -apple-system, sans-serif; user-select: none; }
+.ankizoo-widget .az-settings-btn { position: absolute; top: 6px; right: 8px; font-size: 14px;
+    opacity: 0.6; cursor: pointer; line-height: 1; }
+.ankizoo-widget .az-settings-btn:hover { opacity: 1; }
+.ankizoo-widget .az-gate-pane { display: flex; align-items: center; justify-content: center; width: 54px;
+    flex-shrink: 0; border-right: 1px solid var(--az-divider, #3f9142); margin-right: 12px; padding-right: 12px; }
+.ankizoo-widget .az-gate-pane img { width: 44px; height: 44px; object-fit: contain; }
 .ankizoo-widget .az-info { flex: 1; min-width: 0; }
-.ankizoo-widget .az-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.ankizoo-widget .az-name { font-weight: 700; font-size: 14px; }
-.ankizoo-widget .az-rank { font-size: 11px; opacity: 0.75; }
-.ankizoo-widget .az-level { font-weight: 800; font-size: 16px; }
-.ankizoo-widget .az-bar { height: 8px; border-radius: 999px; background: rgba(120,120,120,0.25); margin: 6px 0 4px; overflow: hidden; }
-.ankizoo-widget .az-bar-fill { height: 100%; background: linear-gradient(90deg, #6fbf73, #3f9142); }
-.ankizoo-widget .az-stats-row { display: flex; justify-content: space-between; font-size: 12px; opacity: 0.85; }
+.ankizoo-widget .az-title-row { display: flex; align-items: center; gap: 10px; }
+.ankizoo-widget .az-rank-icon { width: 52px; height: 52px; background-repeat: no-repeat;
+    background-size: 1000% 500%; image-rendering: pixelated; flex-shrink: 0; }
+.ankizoo-widget .az-title-stack { flex: 1; min-width: 0; }
+.ankizoo-widget .az-rank-level-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ankizoo-widget .az-rank { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ankizoo-widget .az-level { font-weight: 800; font-size: 15px; white-space: nowrap; flex-shrink: 0; }
+.ankizoo-widget .az-bar-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.ankizoo-widget .az-bar { flex: 1; height: 7px; border-radius: 999px; background: rgba(120,120,120,0.25); overflow: hidden; }
+.ankizoo-widget .az-bar-fill { height: 100%; background: var(--az-xpbar, #6fbf73); }
+.ankizoo-widget .az-xp-label { font-size: 10px; opacity: 0.85; white-space: nowrap; }
+.ankizoo-widget .az-bottom-row { display: flex; gap: 10px; margin-top: 8px; }
+.ankizoo-widget .az-stats-col { display: flex; flex-direction: column; gap: 4px; font-size: 10px; flex-shrink: 0; }
+.ankizoo-widget .az-stats-col .az-quest-count { font-weight: 700; }
+.ankizoo-widget .az-coin-icon { width: 11px; height: 11px; vertical-align: middle; margin-right: 2px; }
+.ankizoo-widget .az-quest-list { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ankizoo-widget .az-quest-row { display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 10px; }
+.ankizoo-widget .az-quest-row:last-child { border-bottom: none; }
+.ankizoo-widget .az-quest-row .az-quest-label { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ankizoo-widget .az-quest-status { font-weight: 700; white-space: nowrap; }
+.ankizoo-widget .az-quest-status.done { color: var(--az-questdone, #6fbf73); }
+.ankizoo-widget .az-quest-status.pending { opacity: 0.7; font-weight: 400; }
+.ankizoo-widget .az-quests-empty { font-size: 10px; opacity: 0.6; }
 </style>
 """
 
 
-def _hero_sprite_uri() -> str:
-    data = get_zoo_data()
-    owned = data.state.owned_animals
-    if owned:
-        try:
-            animal = animals_module.get_animal(owned[-1])
-            return animal["sprite_idle_uri"]
-        except KeyError:
-            pass
-    # Default: first (lowest-level) animal in the catalog, unowned or not.
-    catalog = animals_module.get_catalog()
-    return catalog[0]["sprite_idle_uri"] if catalog else ""
+_rank_sprite_uri_cache: str | None = None
+
+
+def _rank_sprite_uri() -> str:
+    global _rank_sprite_uri_cache
+    if _rank_sprite_uri_cache is None:
+        path = os.path.join(animals_module.SPRITES_DIR, "rank_upgrade_sprite_sheet.png")
+        _rank_sprite_uri_cache = sprite_render.file_data_uri(path)
+    return _rank_sprite_uri_cache
+
+
+def _rank_icon_position(level: int) -> str:
+    """CSS background-position for the level's cell in the uniform 10x5 sheet."""
+    idx = max(1, min(RANK_SPRITE_MAX_LEVEL, level)) - 1
+    col, row = idx % RANK_SPRITE_COLS, idx // RANK_SPRITE_COLS
+    x = col / (RANK_SPRITE_COLS - 1) * 100
+    y = row / (RANK_SPRITE_ROWS - 1) * 100
+    return f"{x:.4f}% {y:.4f}%"
+
+
+_asset_uri_cache: dict[str, str] = {}
+
+
+def _asset_uri(filename: str) -> str:
+    if filename not in _asset_uri_cache:
+        _asset_uri_cache[filename] = sprite_render.file_data_uri(os.path.join(ASSETS_DIR, filename))
+    return _asset_uri_cache[filename]
+
+
+def _widget_style_vars() -> str:
+    conf = config_module.get_config()
+    parts = []
+    for short_key, conf_key in config_module.WIDGET_COLOR_KEYS.items():
+        value = config_module.valid_hex_color(conf.get(conf_key), config_module.DEFAULTS[conf_key])
+        parts.append(f"--az-{short_key.lower()}:{value};")
+    return " ".join(parts)
+
+
+def _quest_rows_html(quest_list: list) -> str:
+    if not quest_list:
+        return '<div class="az-quests-empty">No quests yet -- answer a few cards to roll today\'s quests.</div>'
+    rows = []
+    for q in quest_list:
+        if q.get("completed"):
+            status = '<span class="az-quest-status done">✓ Done</span>'
+        else:
+            status = f'<span class="az-quest-status pending">{q.get("progress", 0)}/{q.get("target", 1)}</span>'
+        rows.append(
+            f'<div class="az-quest-row"><span class="az-quest-label">{html.escape(q.get("label", ""))}</span>{status}</div>'
+        )
+    return "".join(rows)
+
+
+def _card_inner_html(state, progress: leveling.Progress) -> str:
+    level, rank, percent = progress.level, progress.rank, progress.percent
+    owned_count = len(state.owned_animals)
+    total_count = len(animals_module.get_catalog())
+    quests_done = sum(1 for q in state.quests if q.get("completed"))
+    quests_total = len(state.quests)
+
+    return f"""
+        <span class="az-settings-btn" id="az-settings-btn" title="Settings"
+            onclick="event.stopPropagation(); pycmd('ankiZoo_openSettings')">⚙</span>
+        <div class="az-gate-pane"><img src="{_asset_uri('zoo_icon.png')}" alt="Zoo"></div>
+        <div class="az-info">
+            <div class="az-title-row">
+                <span class="az-rank-icon" id="az-rank-icon" style="background-image:url({_rank_sprite_uri()}); background-position:{_rank_icon_position(level)};"></span>
+                <div class="az-title-stack">
+                    <div class="az-rank-level-row">
+                        <span class="az-rank" id="az-rank">{html.escape(rank)}</span>
+                        <span class="az-level" id="az-level">Lv. {level}</span>
+                    </div>
+                    <div class="az-bar-row">
+                        <div class="az-bar"><div class="az-bar-fill" id="az-bar-fill" style="width: {percent}%;"></div></div>
+                        <span class="az-xp-label" id="az-xp-label">{progress.xp_into}/{progress.xp_next} XP</span>
+                    </div>
+                </div>
+            </div>
+            <div class="az-bottom-row">
+                <div class="az-stats-col">
+                    <span class="az-quest-count" id="az-quest-count">Quests: {quests_done}/{quests_total}</span>
+                    <span id="az-animals">\U0001F43E {owned_count} / {total_count}</span>
+                    <span id="az-coins"><img class="az-coin-icon" src="{_asset_uri('coin.png')}" alt="">{state.coins}</span>
+                </div>
+                <div class="az-quest-list" id="az-quest-list">{_quest_rows_html(state.quests)}</div>
+            </div>
+        </div>
+    """
 
 
 def get_widget_html() -> str:
     data = get_zoo_data()
     state = data.state
-    base = leveling.get_level_base()
-    level, xp_into, xp_next = leveling.collapse_xp(state.total_xp, base)
-    rank = leveling.rank_for_level(level)
-    percent = 0 if xp_next <= 0 else min(100, int(xp_into / xp_next * 100))
-    owned_count = len(state.owned_animals)
-    total_count = len(animals_module.get_catalog())
-    quests_done = sum(1 for q in state.quests if q.get("completed"))
-    quests_total = len(state.quests) if state.quests else 3
-
-    hero_uri = _hero_sprite_uri()
+    progress = leveling.get_progress(state.total_xp)
+    quests_module.ensure_daily_quests_and_save(data, progress.level)
 
     return f"""
     {TOAST_ASSETS}
     {WIDGET_CSS}
-    <div class="ankizoo-widget" id="ankizoo-widget" onclick="pycmd('ankiZoo_openZoo')">
-        <img class="az-hero" id="az-hero-img" src="{hero_uri}">
-        <div class="az-info">
-            <div class="az-title-row">
-                <span class="az-name">ankiZoo <span class="az-rank" id="az-rank">{html.escape(rank)}</span></span>
-                <span class="az-level" id="az-level">Lv. {level}</span>
-            </div>
-            <div class="az-bar"><div class="az-bar-fill" id="az-bar-fill" style="width: {percent}%;"></div></div>
-            <div class="az-stats-row">
-                <span id="az-coins">\U0001FA99 {state.coins}</span>
-                <span id="az-animals">\U0001F43E {owned_count} / {total_count}</span>
-                <span id="az-quests">Quests: {quests_done}/{quests_total}</span>
-            </div>
-        </div>
+    <div class="ankizoo-widget" id="ankizoo-widget" style="{_widget_style_vars()}" onclick="pycmd('ankiZoo_openZoo')">
+        {_card_inner_html(state, progress)}
     </div>
     """
 
@@ -125,36 +211,18 @@ def _on_will_render_content(deck_browser: DeckBrowser, content: Any) -> None:
 def refresh_active_widget() -> None:
     data = get_zoo_data()
     state = data.state
-    base = leveling.get_level_base()
-    level, xp_into, xp_next = leveling.collapse_xp(state.total_xp, base)
-    rank = leveling.rank_for_level(level)
-    percent = 0 if xp_next <= 0 else min(100, int(xp_into / xp_next * 100))
-    owned_count = len(state.owned_animals)
-    total_count = len(animals_module.get_catalog())
-    quests_done = sum(1 for q in state.quests if q.get("completed"))
-    quests_total = len(state.quests) if state.quests else 3
+    progress = leveling.get_progress(state.total_xp)
+    quests_module.ensure_daily_quests_and_save(data, progress.level)
 
-    payload = {
-        "rank": rank,
-        "level": level,
-        "percent": percent,
-        "coins": state.coins,
-        "owned": owned_count,
-        "total": total_count,
-        "questsDone": quests_done,
-        "questsTotal": quests_total,
-        "heroUri": _hero_sprite_uri(),
-    }
+    inner_html = _card_inner_html(state, progress)
+    style_vars = _widget_style_vars()
     script = f"""
     (function() {{
-        const p = {json.dumps(payload, ensure_ascii=False)};
-        const rank = document.getElementById('az-rank'); if (rank) rank.textContent = p.rank;
-        const level = document.getElementById('az-level'); if (level) level.textContent = 'Lv. ' + p.level;
-        const bar = document.getElementById('az-bar-fill'); if (bar) bar.style.width = p.percent + '%';
-        const coins = document.getElementById('az-coins'); if (coins) coins.textContent = '\\u{{1FA99}} ' + p.coins;
-        const animalsEl = document.getElementById('az-animals'); if (animalsEl) animalsEl.textContent = '\\u{{1F43E}} ' + p.owned + ' / ' + p.total;
-        const quests = document.getElementById('az-quests'); if (quests) quests.textContent = 'Quests: ' + p.questsDone + '/' + p.questsTotal;
-        const hero = document.getElementById('az-hero-img'); if (hero) hero.src = p.heroUri;
+        const el = document.getElementById('ankizoo-widget');
+        if (el) {{
+            el.innerHTML = {json.dumps(inner_html, ensure_ascii=False)};
+            el.style.cssText = {json.dumps(style_vars, ensure_ascii=False)};
+        }}
     }})();
     """
     web = getattr(mw.deckBrowser, "web", None) if hasattr(mw, "deckBrowser") else None
@@ -166,10 +234,15 @@ def refresh_active_widget() -> None:
 
 
 def _on_js_message(handled, message: str, context: Any):
-    if isinstance(context, DeckBrowser) and message == "ankiZoo_openZoo":
-        from . import zoo_dialog
-        zoo_dialog.open_zoo_dialog()
-        return (True, None)
+    if isinstance(context, DeckBrowser):
+        if message == "ankiZoo_openZoo":
+            from . import zoo_dialog
+            zoo_dialog.open_zoo_dialog()
+            return (True, None)
+        if message == "ankiZoo_openSettings":
+            from . import zoo_dialog
+            zoo_dialog.open_zoo_dialog(initial_tab="settings")
+            return (True, None)
     return handled
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import List, Tuple
 
 from . import config
@@ -46,3 +47,19 @@ def rank_for_level(level: int) -> str:
 
 def get_level_base() -> int:
     return int(config.get_config().get("levelCurveBase", 4))
+
+
+@dataclass
+class Progress:
+    level: int
+    xp_into: int
+    xp_next: int
+    percent: int
+    rank: str
+
+
+def get_progress(total_xp: int) -> Progress:
+    """Level/XP/rank/percent bundle, computed once from total_xp."""
+    level, xp_into, xp_next = collapse_xp(total_xp, get_level_base())
+    percent = 0 if xp_next <= 0 else min(100, int(xp_into / xp_next * 100))
+    return Progress(level, xp_into, xp_next, percent, rank_for_level(level))

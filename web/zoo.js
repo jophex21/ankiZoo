@@ -88,6 +88,35 @@
         document.getElementById('az-modal-overlay').classList.add('show');
     }
 
+    function renderColorPickers() {
+        Object.keys(DATA.widgetColors || {}).forEach((key) => {
+            const hexInput = document.getElementById(`az-color-${key}-hex`);
+            const swatchBtn = document.getElementById(`az-color-${key}-swatch`);
+            const value = DATA.widgetColors[key];
+            if (hexInput) hexInput.value = value;
+            if (swatchBtn) swatchBtn.style.backgroundColor = value;
+        });
+    }
+
+    function setupColorPickers() {
+        const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+        Object.keys(DATA.widgetColors || {}).forEach((key) => {
+            const hexInput = document.getElementById(`az-color-${key}-hex`);
+            const swatchBtn = document.getElementById(`az-color-${key}-swatch`);
+            if (!hexInput || !swatchBtn) return;
+
+            // The swatch opens Qt's native QColorDialog (via pickWidgetColor) rather than
+            // an HTML <input type="color">, which was returning inaccurate colors on macOS
+            // (it goes through Chromium's own color picker/management, not the real OS panel).
+            swatchBtn.addEventListener('click', () => pycmd(`pickWidgetColor:${key}`));
+            hexInput.addEventListener('change', () => {
+                if (!HEX_RE.test(hexInput.value)) return;
+                pycmd(`setWidgetColor:${key}:${hexInput.value}`);
+            });
+        });
+        renderColorPickers();
+    }
+
     // ---------- Header ----------
     function renderHeader() {
         document.getElementById('az-header-rank').textContent = DATA.rank;
@@ -117,6 +146,17 @@
                     const animalId = DATA.placedAnimals[key];
                     if (animalId && catalogById[animalId]) {
                         tile.classList.add('owned');
+                        const terrain = DATA.tileTerrain[key];
+                        const terrainImg = terrain && DATA.terrainImages[terrain.biome];
+                        if (terrainImg) {
+                            tile.style.backgroundImage = `url(${terrainImg.uri})`;
+                            tile.style.backgroundPosition = `-${terrain.ox}px -${terrain.oy}px`;
+                            tile.style.backgroundSize = `${terrainImg.w}px ${terrainImg.h}px`;
+                        }
+                        const fence = document.createElement('img');
+                        fence.className = 'az-fence';
+                        fence.src = DATA.fenceUri;
+                        tile.appendChild(fence);
                         const img = document.createElement('img');
                         img.dataset.idleUri = catalogById[animalId].sprite_idle_uri;
                         img.dataset.blinkUri = catalogById[animalId].sprite_blink_uri;
@@ -265,6 +305,7 @@
         renderGrid();
         renderDex();
         renderQuests();
+        renderColorPickers();
     }
 
     // ---------- Bridge update handler ----------
@@ -300,16 +341,23 @@
             if (e.target.id === 'az-modal-overlay') closeModal();
         });
 
+        function activateTab(tabName) {
+            const btn = document.querySelector(`.az-tab-btn[data-tab="${tabName}"]`);
+            const panel = document.getElementById('az-tab-' + tabName);
+            if (!btn || !panel) return;
+            document.querySelectorAll('.az-tab-btn').forEach((b) => b.classList.remove('active'));
+            document.querySelectorAll('.az-tab-panel').forEach((p) => p.classList.remove('active'));
+            btn.classList.add('active');
+            panel.classList.add('active');
+        }
+
         document.querySelectorAll('.az-tab-btn').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.az-tab-btn').forEach((b) => b.classList.remove('active'));
-                document.querySelectorAll('.az-tab-panel').forEach((p) => p.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('az-tab-' + btn.dataset.tab).classList.add('active');
-            });
+            btn.addEventListener('click', () => activateTab(btn.dataset.tab));
         });
+        if (DATA.initialTab) activateTab(DATA.initialTab);
 
         document.getElementById('az-reset-btn').addEventListener('click', openResetConfirmModal);
+        setupColorPickers();
 
         setInterval(() => {
             blinkOn = !blinkOn;

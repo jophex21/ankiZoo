@@ -6,10 +6,26 @@
     "dailyQuestCount": 3,
     "tileExpandBaseCost": 25,
     "tileExpandCostPerOwned": 8,
-    "notificationsEnabled": true,
+    "widgetBgColor": "#1f232b",
+    "widgetBorderColor": "#3f9142",
+    "widgetXpBarColor": "#6fbf73",
+    "widgetDividerColor": "#3f9142",
+    "widgetQuestDoneColor": "#6fbf73",
     "lootBox": {
-        "common": {"min": 20, "max": 40, "weight": 60},
-        "uncommon": {"min": 41, "max": 70, "weight": 30},
-        "rare": {"min": 71, "max": 100, "weight": 10}
+        "common": {
+            "min": 20,
+            "max": 40,
+            "weight": 60
+        },
+        "uncommon": {
+            "min": 41,
+            "max": 70,
+            "weight": 30
+        },
+        "rare": {
+            "min": 71,
+            "max": 100,
+            "weight": 10
+        }
     }
 }

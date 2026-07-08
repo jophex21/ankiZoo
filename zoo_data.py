@@ -2,23 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import random
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from aqt import mw
 
-
-@dataclass
-class QuestData:
-    id: str
-    kind: str  # "cards", "new_cards", "streak"
-    target: int
-    progress: int = 0
-    completed: bool = False
-    reward_type: str = "coins"  # "coins" or "animal"
-    reward_amount: int = 0
+ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 @dataclass
@@ -27,6 +16,7 @@ class ZooState:
     coins: int = 0
     owned_tiles: List[List[int]] = field(default_factory=lambda: [[5, 5]])  # center of the 11x11 grid
     placed_animals: Dict[str, str] = field(default_factory=dict)  # "x,y" -> animal_id
+    tile_terrain: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # "x,y" -> {"biome", "ox", "oy"}
     owned_animals: List[str] = field(default_factory=list)
     streak_current: int = 0
     streak_best: int = 0
@@ -66,9 +56,6 @@ class ZooData:
         except Exception as e:
             print(f"ankiZoo: Error loading zoo data: {e}")
 
-    def reload(self) -> None:
-        self._load()
-
     def save(self) -> None:
         path = self._get_data_path()
         try:
@@ -90,17 +77,13 @@ def _reset_zoo_data(*args: Any) -> None:
     _zoo_data = None
 
 
-try:
-    from aqt import gui_hooks
+from aqt import gui_hooks
 
-    gui_hooks.profile_did_open.append(_reset_zoo_data)
-except Exception:
-    pass
+gui_hooks.profile_did_open.append(_reset_zoo_data)
 
 
 def get_zoo_data() -> ZooData:
     global _zoo_data
     if _zoo_data is None:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        _zoo_data = ZooData(current_dir)
+        _zoo_data = ZooData(ADDON_DIR)
     return _zoo_data

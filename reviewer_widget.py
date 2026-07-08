@@ -136,10 +136,9 @@ def _widget_markup() -> str:
 def _level_chip_markup() -> str:
     data = get_zoo_data()
     state = data.state
-    base = leveling.get_level_base()
-    level, xp_into, xp_next = leveling.collapse_xp(state.total_xp, base)
-    percent = 0 if xp_next <= 0 else min(100, int(xp_into / xp_next * 100))
-    xp_label = f"{xp_into}/{xp_next} XP" if xp_next > 0 else "Max level"
+    progress = leveling.get_progress(state.total_xp)
+    level, percent = progress.level, progress.percent
+    xp_label = f"{progress.xp_into}/{progress.xp_next} XP" if progress.xp_next > 0 else "Max level"
 
     return f"""
     <div id="ankizoo-level-chip" onclick="pycmd('ankiZoo_openZoo')">
@@ -174,10 +173,9 @@ def refresh_active_widget() -> None:
 
     data = get_zoo_data()
     state = data.state
-    base = leveling.get_level_base()
-    level, xp_into, xp_next = leveling.collapse_xp(state.total_xp, base)
-    percent = 0 if xp_next <= 0 else min(100, int(xp_into / xp_next * 100))
-    xp_label = f"{xp_into}/{xp_next} XP" if xp_next > 0 else "Max level"
+    progress = leveling.get_progress(state.total_xp)
+    level, percent = progress.level, progress.percent
+    xp_label = f"{progress.xp_into}/{progress.xp_next} XP" if progress.xp_next > 0 else "Max level"
 
     payload = {"level": level, "percent": percent, "xpLabel": xp_label, "coins": state.coins}
     script = f"""

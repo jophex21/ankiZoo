@@ -2,55 +2,72 @@ from __future__ import annotations
 
 import json
 import os
+import random
 from typing import Any, Dict, Optional
 
 from aqt import mw
-from aqt.qt import QDialog, QVBoxLayout
+from aqt.qt import QColor, QColorDialog, QDialog, QVBoxLayout
 from aqt.webview import AnkiWebView
 
 from . import animals as animals_module
-from . import leveling, quests as quests_module, zoo_logic
-from .zoo_data import get_zoo_data
+from . import config as config_module
+from . import leveling, quests as quests_module, sprite_render, zoo_logic
+from .zoo_data import ADDON_DIR, get_zoo_data
 
-ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 GRID_SIZE = 11  # odd so the starting tile can sit dead-center
 
 
 def _build_payload() -> Dict[str, Any]:
     data = get_zoo_data()
     state = data.state
-    base = leveling.get_level_base()
-    level, xp_into, xp_next = leveling.collapse_xp(state.total_xp, base)
+    progress = leveling.get_progress(state.total_xp)
+    level = progress.level
     # Ensure quests exist even if the dialog is opened before any card has
     # been answered today (economy.py otherwise only generates them lazily
-    # on the first answered card). Save immediately so a freshly-generated
-    # set isn't lost if the user closes Anki without answering any cards.
-    quests_before = state.quests
-    quests_module.ensure_daily_quests(state, level)
-    if state.quests is not quests_before:
-        data.save()
+    # on the first answered card).
+    quests_module.ensure_daily_quests_and_save(data, level)
+
+    biomes_in_use = {t["biome"] for t in state.tile_terrain.values()}
+    terrain_images = {}
+    for biome in biomes_in_use:
+        uri = animals_module.get_terrain_data_uri(biome)
+        if uri:
+            w, h = animals_module.get_terrain_size(biome)
+            terrain_images[biome] = {"uri": uri, "w": w, "h": h}
+
+    conf = config_module.get_config()
+    widget_colors = {
+        short_key: config_module.valid_hex_color(conf.get(conf_key), config_module.DEFAULTS[conf_key])
+        for short_key, conf_key in config_module.WIDGET_COLOR_KEYS.items()
+    }
+
     return {
         "gridSize": GRID_SIZE,
         "ownedTiles": state.owned_tiles,
         "placedAnimals": state.placed_animals,
+        "tileTerrain": state.tile_terrain,
+        "terrainImages": terrain_images,
+        "fenceUri": sprite_render.FENCE_DATA_URI,
         "ownedAnimals": state.owned_animals,
         "coins": state.coins,
         "level": level,
-        "xpIntoLevel": xp_into,
-        "xpToNextLevel": xp_next,
-        "rank": leveling.rank_for_level(level),
+        "xpIntoLevel": progress.xp_into,
+        "xpToNextLevel": progress.xp_next,
+        "rank": progress.rank,
         "nextTileCost": zoo_logic.tile_cost(len(state.owned_tiles)),
         "catalog": animals_module.get_catalog(),
         "quests": state.quests,
+        "widgetColors": widget_colors,
     }
 
 
 class ZooDialog(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent, initial_tab: str = "zoo"):
         super().__init__(parent)
         self.setWindowTitle("Your Zoo")
         self.resize(1000, 750)
         self.setMinimumSize(700, 500)
+        self.initial_tab = initial_tab
 
         self.web = AnkiWebView(self)
         self.web.set_bridge_command(self._on_bridge_cmd, self)
@@ -64,6 +81,7 @@ class ZooDialog(QDialog):
 
     def render(self) -> None:
         payload = _build_payload()
+        payload["initialTab"] = self.initial_tab
         data_script = f"<script>window.ANKIZOO_DATA = {json.dumps(payload, ensure_ascii=False)};</script>"
 
         # Inlined rather than referenced via css=/js= file paths: this sidesteps any
@@ -134,8 +152,7 @@ class ZooDialog(QDialog):
                 self._push_update(False, "Already owned.")
                 return None
 
-            base = leveling.get_level_base()
-            level, _, _ = leveling.collapse_xp(state.total_xp, base)
+            level = leveling.get_progress(state.total_xp).level
             if level < animal["unlock_level"]:
                 self._push_update(False, f"Requires level {animal['unlock_level']}.")
                 return None
@@ -174,6 +191,13 @@ class ZooDialog(QDialog):
                 return None
 
             state.placed_animals[tile_key] = animal_id
+            biome = animals_module.get_animal(animal_id)["biome"]
+            w, h = animals_module.get_terrain_size(biome)
+            state.tile_terrain[tile_key] = {
+                "biome": biome,
+                "ox": random.randint(0, max(0, w - 32)),
+                "oy": random.randint(0, max(0, h - 32)),
+            }
             data.save()
             self._push_update(True)
             return None
@@ -198,6 +222,37 @@ class ZooDialog(QDialog):
             self._push_update(True, "All progress has been reset.")
             return None
 
+        if cmd.startswith("setWidgetColor:"):
+            try:
+                _, short_key, value = cmd.split(":", 2)
+            except ValueError:
+                return None
+            conf_key = config_module.WIDGET_COLOR_KEYS.get(short_key)
+            if conf_key and config_module.valid_hex_color(value, "") == value:
+                conf = config_module.get_config()
+                conf[conf_key] = value
+                config_module.write_config(conf)
+                self._push_update(True)
+            return None
+
+        if cmd.startswith("pickWidgetColor:"):
+            short_key = cmd.split(":", 1)[1]
+            conf_key = config_module.WIDGET_COLOR_KEYS.get(short_key)
+            if not conf_key:
+                return None
+            conf = config_module.get_config()
+            current = config_module.valid_hex_color(conf.get(conf_key), config_module.DEFAULTS[conf_key])
+            # QColorDialog is Qt's own native dialog (same as Interactive Heatmap's
+            # color pickers) -- unlike an HTML <input type="color">, it doesn't route
+            # through Chromium's separate color-management stack, which was producing
+            # inaccurate colors compared to what the user actually picked.
+            color = QColorDialog.getColor(QColor(current), self, "Choose a color")
+            if color.isValid():
+                conf[conf_key] = color.name()
+                config_module.write_config(conf)
+                self._push_update(True)
+            return None
+
         return None
 
     def _refresh_home_widget(self) -> None:
@@ -208,9 +263,9 @@ class ZooDialog(QDialog):
 _zoo_dialog: Optional[ZooDialog] = None
 
 
-def open_zoo_dialog() -> None:
+def open_zoo_dialog(initial_tab: str = "zoo") -> None:
     global _zoo_dialog
     if _zoo_dialog is not None:
         _zoo_dialog.close()
-    _zoo_dialog = ZooDialog(mw)
+    _zoo_dialog = ZooDialog(mw, initial_tab=initial_tab)
     _zoo_dialog.show()

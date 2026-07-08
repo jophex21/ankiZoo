@@ -7,6 +7,7 @@ simple as swapping an <img src> between two precomputed frames on a timer.
 from __future__ import annotations
 
 import base64
+import mimetypes
 from typing import Dict, List
 
 OUTLINE_COLOR = "#1a1a1a"
@@ -60,14 +61,36 @@ def sprite_data_uri(frame: List[str], palette: Dict[str, str], pixel_size: int =
     return svg_data_uri(render_svg(frame, palette, pixel_size))
 
 
-_MIME_BY_EXT = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-}
+def _build_fence_svg(size: int = 42, post: int = 3, gap: int = 4) -> str:
+    """A dashed ring of small posts around the tile's perimeter (viewed top-down),
+    transparent in the middle so the terrain/sprite show through underneath/above it.
+    """
+    body = "#a9752f"
+    rects = []
+
+    def add_post(x: int, y: int) -> None:
+        rects.append(f'<rect x="{x}" y="{y}" width="{post}" height="{post}" fill="{OUTLINE_COLOR}"/>')
+        rects.append(f'<rect x="{x + 1}" y="{y + 1}" width="{post - 2}" height="{post - 2}" fill="{body}"/>')
+
+    step = post + gap
+    x = 1
+    while x + post <= size - 1:
+        add_post(x, 0)
+        add_post(x, size - post)
+        x += step
+    y = 1
+    while y + post <= size - 1:
+        add_post(0, y)
+        add_post(size - post, y)
+        y += step
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'viewBox="0 0 {size} {size}" shape-rendering="crispEdges">{"".join(rects)}</svg>'
+    )
+
+
+FENCE_DATA_URI = svg_data_uri(_build_fence_svg())
 
 
 def file_data_uri(path: str) -> str:
@@ -77,8 +100,7 @@ def file_data_uri(path: str) -> str:
     lookup), kept alongside the procedural renderer above so both paths
     produce the same self-contained data-URI shape the webview expects.
     """
-    ext = path[path.rfind("."):].lower()
-    mime = _MIME_BY_EXT.get(ext, "application/octet-stream")
+    mime, _ = mimetypes.guess_type(path)
     with open(path, "rb") as f:
         encoded = base64.b64encode(f.read()).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
+    return f"data:{mime or 'application/octet-stream'};base64,{encoded}"

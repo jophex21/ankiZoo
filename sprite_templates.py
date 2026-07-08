@@ -8,7 +8,7 @@ needing real art, and is meant to be replaced by real sprite sheets later
 """
 from __future__ import annotations
 
-import hashlib
+import random
 from typing import Dict, List, Tuple
 
 GRID_W = 20
@@ -173,21 +173,11 @@ def _apply_pattern(grid: Grid, pattern: str, animal_id: str) -> Grid:
                     if grid[y][x] == "B":
                         grid[y][x] = "A"
     elif pattern == "spots":
-        seed = int(hashlib.sha1(animal_id.encode()).hexdigest(), 16)
-        rng_state = seed
-        count = 0
-        attempts = 0
-        while count < 7 and attempts < 200:
-            attempts += 1
-            rng_state = (rng_state * 1103515245 + 12345) & 0x7FFFFFFF
-            x = rng_state % w
-            rng_state = (rng_state * 1103515245 + 12345) & 0x7FFFFFFF
-            y = rng_state % h
-            if grid[y][x] == "B":
-                grid[y][x] = "A"
-                count += 1
+        rng = random.Random(animal_id)
+        b_cells = [(y, x) for y in range(h) for x in range(w) if grid[y][x] == "B"]
+        for y, x in rng.sample(b_cells, min(7, len(b_cells))):
+            grid[y][x] = "A"
     elif pattern == "mask":
-        eye_rows = [y for y in range(h) if "E" in grid[y] or "B" in grid[y]]
         mid = h // 2
         for y in range(max(0, mid - 3), mid):
             for x in range(w):

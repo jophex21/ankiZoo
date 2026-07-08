@@ -8,7 +8,7 @@ from aqt import mw
 
 from . import animals as animals_module
 from . import config
-from .zoo_data import QuestData, ZooState
+from .zoo_data import ZooData, ZooState
 
 QUEST_TEMPLATES = [
     {"kind": "cards", "min": 15, "max": 40, "label": "Answer {target} cards"},
@@ -71,6 +71,18 @@ def ensure_daily_quests(state: ZooState, level: int) -> List[Dict[str, Any]]:
     if state.quests_date != today or not state.quests:
         state.quests_date = today
         state.quests = _generate_quests(level)
+    return state.quests
+
+
+def ensure_daily_quests_and_save(data: ZooData, level: int) -> List[Dict[str, Any]]:
+    """Like ensure_daily_quests, but persists immediately if quests were freshly
+    generated, so a freshly-rolled set isn't lost if Anki closes before anything
+    else triggers a save."""
+    state = data.state
+    quests_before = state.quests
+    ensure_daily_quests(state, level)
+    if state.quests is not quests_before:
+        data.save()
     return state.quests
 
 

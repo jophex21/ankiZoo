@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import functools
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import sprite_render, sprite_templates
 
@@ -19,6 +20,38 @@ def _find_sprite_file(animal_id: str, suffix: str) -> Optional[str]:
         if os.path.isfile(path):
             return path
     return None
+
+
+# Per-biome terrain source images live here, named "<biome_lowercased>.<ext>".
+# Each is expected to be larger than the 32x32 crop taken from it when an
+# animal is placed on a tile (see zoo_dialog.py's placeAnimal handler).
+TERRAIN_DIR = os.path.join(os.path.dirname(__file__), "terrain")
+
+
+def _find_terrain_file(biome: str) -> Optional[str]:
+    for ext in _SPRITE_EXTS:
+        path = os.path.join(TERRAIN_DIR, f"{biome.lower()}{ext}")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+@functools.lru_cache(maxsize=None)
+def get_terrain_size(biome: str) -> Tuple[int, int]:
+    path = _find_terrain_file(biome)
+    if not path:
+        return (32, 32)
+    from aqt.qt import QImage
+    image = QImage(path)
+    return (image.width(), image.height())
+
+
+@functools.lru_cache(maxsize=None)
+def get_terrain_data_uri(biome: str) -> Optional[str]:
+    path = _find_terrain_file(biome)
+    if not path:
+        return None
+    return sprite_render.file_data_uri(path)
 
 # (id, name, biome, template, pattern, palette[body, shade, accent, eye])
 _RAW_ANIMALS: List[Dict[str, Any]] = [

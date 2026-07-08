@@ -1,4 +1,13 @@
 * { box-sizing: border-box; }
+:root {
+    --sage-dark: #778873;
+    --sage-light: #A1BC98;
+    --cream: #DCCFC0;
+    --cream-light: #FDF6ED;
+    --accent: var(--sage-dark);
+    --accent-dim: var(--sage-dark);
+    --accent-glow: var(--sage-light);
+}
 body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -12,25 +21,26 @@ body {
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    background: var(--canvas-elevated, #2b2f36);
-    border-bottom: 1px solid var(--border, #3a3f47);
+    background: var(--cream);
+    color: var(--sage-dark);
+    border-bottom: 1px solid var(--sage-light);
     flex-shrink: 0;
 }
 .az-header-left { display: flex; flex-direction: column; min-width: 90px; }
 .az-rank { font-size: 11px; opacity: 0.75; }
 .az-level { font-weight: 800; font-size: 16px; }
-.az-xp-bar { flex: 1; height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
-.az-xp-fill { height: 100%; background: linear-gradient(90deg, #6fbf73, #3f9142); transition: width 0.3s ease; }
+.az-xp-bar { flex: 1; height: 10px; border-radius: 999px; background: rgba(119,136,115,0.2); overflow: hidden; }
+.az-xp-fill { height: 100%; background: linear-gradient(90deg, var(--sage-light), var(--sage-dark)); transition: width 0.3s ease; }
 .az-xp-label { font-size: 12px; opacity: 0.8; min-width: 90px; text-align: right; }
 .az-coins { font-weight: 700; font-size: 14px; min-width: 70px; text-align: right; }
 .az-coins::before { content: "\1FA99  "; }
 
-.az-tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--canvas-elevated, #2b2f36); flex-shrink: 0; }
+.az-tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--cream); flex-shrink: 0; }
 .az-tab-btn {
-    background: transparent; border: none; color: var(--fg, #f2f2f2); opacity: 0.6;
+    background: transparent; border: none; color: var(--sage-dark); opacity: 0.6;
     padding: 8px 16px; border-radius: 10px 10px 0 0; cursor: pointer; font-size: 13px; font-weight: 600;
 }
-.az-tab-btn.active { opacity: 1; background: var(--canvas, #1e2126); }
+.az-tab-btn.active { opacity: 1; background: var(--cream-light); color: var(--sage-dark); }
 
 .az-main { flex: 1; overflow: auto; padding: 16px; }
 .az-tab-panel { display: none; }
@@ -59,6 +69,10 @@ body {
 .az-tile.empty-owned { cursor: pointer; }
 .az-tile.empty-owned::after { content: "+"; opacity: 0.35; font-size: 18px; }
 .az-tile img { width: 32px; height: 32px; image-rendering: pixelated; cursor: pointer; }
+.az-tile .az-fence {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    image-rendering: pixelated; pointer-events: none; cursor: default;
+}
 
 /* Collection / dex */
 .az-dex { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
@@ -77,10 +91,11 @@ body {
 .az-rarity.epic { background: #6b3f9e; }
 .az-rarity.legendary { background: #a8792f; }
 .az-dex-card button {
-    margin-top: 6px; border: none; border-radius: 8px; padding: 5px 12px; font-size: 11px; cursor: pointer;
-    background: #3f9142; color: white;
+    margin-top: 6px; padding: 6px 14px; font-size: 11px;
+    background: var(--accent-dim);
 }
 .az-dex-card button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
+.az-dex-card button:disabled::before { display: none; }
 
 /* Quests */
 .az-quests { display: flex; flex-direction: column; gap: 10px; max-width: 480px; margin: 0 auto; }
@@ -100,13 +115,68 @@ body {
 
 /* Settings */
 .az-settings { max-width: 480px; margin: 40px auto 0; text-align: center; }
-.az-settings h3 { margin: 0 0 8px; font-size: 15px; }
+.az-settings h3 {
+    margin: 0 0 10px; font-size: 15px; font-weight: 800; letter-spacing: 0.02em;
+    color: var(--accent-glow); border-left: 3px solid var(--accent); padding-left: 10px;
+}
 .az-settings p { font-size: 13px; opacity: 0.75; line-height: 1.5; margin: 0 0 16px; }
+.az-color-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.az-color-label { flex: 1; text-align: left; font-size: 13px; }
+.az-color-hex { width: 90px; font-family: monospace; font-size: 12px; padding: 4px 6px;
+    border-radius: 6px; border: 1px solid var(--border, #3a3f47); background: var(--canvas-elevated, #2b2f36); color: inherit; }
+.az-color-swatch { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border, #3a3f47);
+    border-radius: 6px; cursor: pointer; }
+.az-color-swatch:hover { border-color: var(--accent, #6fbf73); }
 .az-reset-btn {
-    background: #8a3f3f; color: white; border: none; border-radius: 8px;
-    padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: #8a3f3f; padding: 10px 22px; font-size: 13px; --dot: #e8a3a3;
 }
 .az-reset-btn:hover { background: #a34d4d; }
+
+/* Shared action-button treatment: pill shape + dot-accent corners on hover */
+.az-dex-card button,
+.az-reset-btn,
+.az-modal-close,
+.az-modal-remove {
+    position: relative;
+    border: none;
+    border-radius: 999px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.az-dex-card button::before,
+.az-reset-btn::before,
+.az-modal-close::before,
+.az-modal-remove::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    z-index: -1;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    background:
+        radial-gradient(circle at center, var(--dot, var(--accent-glow)) 50%, transparent 50%) 2px 2px / 4px 4px no-repeat,
+        radial-gradient(circle at center, var(--dot, var(--accent-glow)) 50%, transparent 50%) 2px calc(100% - 2px) / 4px 4px no-repeat,
+        radial-gradient(circle at center, var(--dot, var(--accent-glow)) 50%, transparent 50%) calc(100% - 2px) 2px / 4px 4px no-repeat,
+        radial-gradient(circle at center, var(--dot, var(--accent-glow)) 50%, transparent 50%) calc(100% - 2px) calc(100% - 2px) / 4px 4px no-repeat;
+}
+.az-dex-card button:hover,
+.az-reset-btn:hover,
+.az-modal-close:hover,
+.az-modal-remove:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+.az-dex-card button:hover::before,
+.az-reset-btn:hover::before,
+.az-modal-close:hover::before,
+.az-modal-remove:hover::before {
+    opacity: 1;
+}
 
 /* Toast */
 .az-toast-container { position: fixed; top: 14px; right: 14px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
@@ -128,7 +198,10 @@ body {
     background: var(--canvas-elevated, #2b2f36); border-radius: 14px; padding: 16px; max-width: 420px; width: 90%;
     max-height: 70vh; overflow: auto;
 }
-.az-modal h3 { margin: 0 0 10px; font-size: 15px; }
+.az-modal h3 {
+    margin: 0 0 10px; font-size: 15px; font-weight: 800; letter-spacing: 0.02em;
+    color: var(--accent-glow); border-left: 3px solid var(--accent); padding-left: 10px;
+}
 .az-modal-animal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
 .az-modal-animal-item {
     display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 8px;
@@ -138,7 +211,7 @@ body {
 .az-modal-animal-item img { width: 36px; height: 36px; image-rendering: pixelated; }
 .az-modal-animal-item span { font-size: 10px; text-align: center; }
 .az-modal-close, .az-modal-remove {
-    margin-top: 10px; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer;
-    background: #4a4f57; color: white;
+    margin-top: 10px; padding: 7px 16px; font-size: 12px;
+    background: #4a4f57; --dot: #dfe3e8;
 }
-.az-modal-remove { background: #8a3f3f; margin-right: 8px; }
+.az-modal-remove { background: #8a3f3f; margin-right: 8px; --dot: #e8a3a3; }
