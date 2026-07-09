@@ -6,7 +6,6 @@ from typing import Any, Dict, List
 
 from aqt import mw
 
-from . import animals as animals_module
 from . import config
 from .zoo_data import ZooData, ZooState
 
@@ -29,39 +28,23 @@ def _today_key() -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
 
-def _roll_reward(kind: str, target: int, level: int) -> Dict[str, Any]:
-    if kind == "streak":
-        return {"reward_type": "coins", "reward_amount": target * 10}
-    if kind == "due_clear":
-        return {"reward_type": "coins", "reward_amount": 100}
-
-    # 70% coins, 30% a free eligible-but-locked animal (falls back to coins if none available)
-    if random.random() < 0.3:
-        eligible = [
-            a for a in animals_module.get_catalog()
-            if a["unlock_level"] <= level
-        ]
-        if eligible:
-            animal = random.choice(eligible)
-            return {"reward_type": "animal", "reward_amount": 0, "reward_animal_id": animal["id"]}
-    return {"reward_type": "coins", "reward_amount": random.randint(30, 80)}
-
-
 def _generate_quests(level: int) -> List[Dict[str, Any]]:
+    # Rewards are no longer decided up front: completing a quest grants a loot
+    # box the player opens later (see lootbox.py), so its contents stay hidden.
     count = int(config.get_config().get("dailyQuestCount", 3))
     templates = random.sample(QUEST_TEMPLATES, k=min(count, len(QUEST_TEMPLATES)))
     quests = []
     for i, template in enumerate(templates):
         target = random.randint(template["min"], template["max"])
-        reward = _roll_reward(template["kind"], target, level)
         quests.append({
             "id": f"{template['kind']}_{i}",
             "kind": template["kind"],
             "target": target,
             "progress": 0,
             "completed": False,
+            "claimed": False,       # set once the loot box is opened
+            "claimed_reward": None,  # the rolled reward, for display after opening
             "label": template["label"].format(target=target),
-            **reward,
         })
     return quests
 

@@ -1,27 +1,39 @@
 <div class="az-app">
     <header class="az-header">
+        <div class="az-rank-badge" id="az-header-badge" title="Rank"></div>
         <div class="az-header-left">
             <span class="az-rank" id="az-header-rank">Trainee</span>
             <span class="az-level" id="az-header-level">Lv. 0</span>
         </div>
         <div class="az-xp-bar"><div class="az-xp-fill" id="az-header-xp-fill" style="width:0%;"></div></div>
         <div class="az-xp-label" id="az-header-xp-label"></div>
+        <div class="az-skill" id="az-header-skill" title="Skill points">0</div>
         <div class="az-coins" id="az-header-coins">0</div>
     </header>
 
     <nav class="az-tabs">
         <button class="az-tab-btn active" data-tab="zoo">Zoo</button>
-        <button class="az-tab-btn" data-tab="collection">Collection</button>
+        <button class="az-tab-btn" data-tab="collection">Skill Tree</button>
         <button class="az-tab-btn" data-tab="quests">Quests</button>
         <button class="az-tab-btn" data-tab="settings">Settings</button>
     </nav>
 
     <main class="az-main">
         <section id="az-tab-zoo" class="az-tab-panel active">
-            <div class="az-grid" id="az-grid"></div>
+            <div class="az-map">
+                <div class="az-map-title">Your Zoo</div>
+                <div class="az-map-clouds"></div>
+                <div class="az-grid" id="az-grid"></div>
+            </div>
         </section>
         <section id="az-tab-collection" class="az-tab-panel">
-            <div class="az-dex" id="az-dex"></div>
+            <div class="az-tree-head">
+                <span class="az-tree-title">Skill Tree</span>
+                <span class="az-tree-sub">Each biome climbs the IUCN tiers (Least Concern → Critically Endangered). Unlocking animals earns ★ stars for that biome; rarer animals are worth more and open the next tier. Spend skill points to unlock, then coins to buy.</span>
+            </div>
+            <div class="az-tree-scroll">
+                <div class="az-tree" id="az-tree"></div>
+            </div>
         </section>
         <section id="az-tab-quests" class="az-tab-panel">
             <div class="az-quests" id="az-quests"></div>

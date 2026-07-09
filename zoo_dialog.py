@@ -11,10 +11,17 @@ from aqt.webview import AnkiWebView
 
 from . import animals as animals_module
 from . import config as config_module
-from . import leveling, quests as quests_module, sprite_render, zoo_logic
+from . import leveling, lootbox, quests as quests_module, sprite_render, zoo_logic
 from .zoo_data import ADDON_DIR, get_zoo_data
 
 GRID_SIZE = 11  # odd so the starting tile can sit dead-center
+
+# The rank badge art is one sprite sheet: a 10x5 grid of 50 shield badges read
+# left-to-right, top-to-bottom, so cell index N corresponds to level N+1. The
+# header shows the current level's cell via CSS background-position (see zoo.js).
+RANK_BADGE_PATH = os.path.join(ADDON_DIR, "sprites", "rank_upgrade_sprite_sheet.png")
+RANK_BADGE_COLS = 10
+RANK_BADGE_ROWS = 5
 
 
 def _build_payload() -> Dict[str, Any]:
@@ -35,6 +42,12 @@ def _build_payload() -> Dict[str, Any]:
             w, h = animals_module.get_terrain_size(biome)
             terrain_images[biome] = {"uri": uri, "w": w, "h": h}
 
+    rank_badge_uri = (
+        sprite_render.file_data_uri(RANK_BADGE_PATH)
+        if os.path.isfile(RANK_BADGE_PATH)
+        else None
+    )
+
     conf = config_module.get_config()
     widget_colors = {
         short_key: config_module.valid_hex_color(conf.get(conf_key), config_module.DEFAULTS[conf_key])
@@ -48,8 +61,14 @@ def _build_payload() -> Dict[str, Any]:
         "tileTerrain": state.tile_terrain,
         "terrainImages": terrain_images,
         "fenceUri": sprite_render.FENCE_DATA_URI,
+        "unlockedAnimals": state.unlocked_animals,
         "ownedAnimals": state.owned_animals,
         "coins": state.coins,
+        "skillPoints": animals_module.available_points(level, state.unlocked_animals, state.pretree_animals, state.bonus_skill_points),
+        "biomeStars": animals_module.biome_stars(state.unlocked_animals),
+        "pointsPerLevel": animals_module.POINTS_PER_LEVEL,
+        "biomeColors": animals_module.BIOME_COLORS,
+        "biomeOrder": animals_module.BIOME_ORDER,
         "level": level,
         "xpIntoLevel": progress.xp_into,
         "xpToNextLevel": progress.xp_next,
@@ -57,7 +76,12 @@ def _build_payload() -> Dict[str, Any]:
         "nextTileCost": zoo_logic.tile_cost(len(state.owned_tiles)),
         "catalog": animals_module.get_catalog(),
         "quests": state.quests,
+        "rarityColors": lootbox.RARITY_COLORS,
+        "rarityLabels": lootbox.RARITY_LABEL,
         "widgetColors": widget_colors,
+        "rankBadgeUri": rank_badge_uri,
+        "rankBadgeCols": RANK_BADGE_COLS,
+        "rankBadgeRows": RANK_BADGE_ROWS,
     }
 
 
@@ -102,8 +126,8 @@ class ZooDialog(QDialog):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    def _push_update(self, success: bool, message: str = "") -> None:
-        result = {"success": success, "message": message, "payload": _build_payload()}
+    def _push_update(self, success: bool, message: str = "", loot: Optional[Dict[str, Any]] = None) -> None:
+        result = {"success": success, "message": message, "payload": _build_payload(), "loot": loot}
         script = f"if (window.ankiZooApplyUpdate) window.ankiZooApplyUpdate({json.dumps(result, ensure_ascii=False)});"
         try:
             self.web.eval(script)
@@ -140,6 +164,38 @@ class ZooDialog(QDialog):
             self._push_update(True, "Tile purchased!")
             return None
 
+        if cmd.startswith("unlockAnimal:"):
+            animal_id = cmd.split(":", 1)[1]
+            try:
+                animal = animals_module.get_animal(animal_id)
+            except KeyError:
+                self._push_update(False, "Unknown animal.")
+                return None
+
+            if animal_id in state.unlocked_animals:
+                self._push_update(False, "Already unlocked.")
+                return None
+
+            if not animals_module.tier_accessible(animal, state.unlocked_animals):
+                self._push_update(
+                    False,
+                    f"Earn {animal['tier_threshold']}★ in {animal['biome']} to unlock {animal['tier_name']} animals.",
+                )
+                return None
+
+            level = leveling.get_progress(state.total_xp).level
+            available = animals_module.available_points(level, state.unlocked_animals, state.pretree_animals, state.bonus_skill_points)
+            if available < animal["skill_cost"]:
+                self._push_update(False, "Not enough skill points.")
+                return None
+
+            # Skill points are derived from level minus spent, so appending the
+            # animal (which raises points_spent) is what "spends" the points.
+            state.unlocked_animals.append(animal_id)
+            data.save()
+            self._push_update(True, f"{animal['name']} unlocked! Buy it with coins to add it to your zoo.")
+            return None
+
         if cmd.startswith("buyAnimal:"):
             animal_id = cmd.split(":", 1)[1]
             try:
@@ -151,10 +207,8 @@ class ZooDialog(QDialog):
             if animal_id in state.owned_animals:
                 self._push_update(False, "Already owned.")
                 return None
-
-            level = leveling.get_progress(state.total_xp).level
-            if level < animal["unlock_level"]:
-                self._push_update(False, f"Requires level {animal['unlock_level']}.")
+            if animal_id not in state.unlocked_animals:
+                self._push_update(False, "Unlock it in the skill tree first.")
                 return None
             if state.coins < animal["cost_coins"]:
                 self._push_update(False, "Not enough coins.")
@@ -213,6 +267,32 @@ class ZooDialog(QDialog):
             state.placed_animals.pop(tile_key, None)
             data.save()
             self._push_update(True)
+            return None
+
+        if cmd.startswith("claimQuest:"):
+            quest_id = cmd.split(":", 1)[1]
+            quest = next((q for q in state.quests if q.get("id") == quest_id), None)
+            if quest is None:
+                self._push_update(False, "Quest not found.")
+                return None
+            if not quest.get("completed"):
+                self._push_update(False, "Finish the quest first.")
+                return None
+            if quest.get("claimed"):
+                self._push_update(False, "Loot box already opened.")
+                return None
+
+            reward = lootbox.roll_reward(state)
+            lootbox.apply_reward(state, reward)
+            quest["claimed"] = True
+            quest["claimed_reward"] = reward
+            data.save()
+            self._refresh_home_widget()
+            from . import reviewer_widget
+            reviewer_widget.refresh_active_widget()
+            # The reward is applied immediately; JS plays the reveal animation from
+            # the `loot` field so nothing is lost if the window closes mid-spin.
+            self._push_update(True, loot={"questId": quest_id, "reward": reward})
             return None
 
         if cmd == "resetZoo":

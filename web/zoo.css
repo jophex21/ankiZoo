@@ -4,6 +4,12 @@
     --sage-light: #A1BC98;
     --cream: #DCCFC0;
     --cream-light: #FDF6ED;
+    --forest-deep: #2f4029;
+    --forest: #3f5240;
+    --grass-a: #8fc568;
+    --grass-b: #83ba5c;
+    --wood: #7a5a3a;
+    --wood-dark: #5c4228;
     --accent: var(--sage-dark);
     --accent-dim: var(--sage-dark);
     --accent-glow: var(--sage-light);
@@ -20,82 +26,297 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 16px;
-    background: var(--cream);
-    color: var(--sage-dark);
-    border-bottom: 1px solid var(--sage-light);
+    padding: 12px 18px;
+    background: linear-gradient(180deg, var(--forest) 0%, var(--forest-deep) 100%);
+    color: var(--cream-light);
+    border-bottom: 2px solid rgba(0,0,0,0.25);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     flex-shrink: 0;
 }
-.az-header-left { display: flex; flex-direction: column; min-width: 90px; }
-.az-rank { font-size: 11px; opacity: 0.75; }
-.az-level { font-weight: 800; font-size: 16px; }
-.az-xp-bar { flex: 1; height: 10px; border-radius: 999px; background: rgba(119,136,115,0.2); overflow: hidden; }
-.az-xp-fill { height: 100%; background: linear-gradient(90deg, var(--sage-light), var(--sage-dark)); transition: width 0.3s ease; }
-.az-xp-label { font-size: 12px; opacity: 0.8; min-width: 90px; text-align: right; }
-.az-coins { font-weight: 700; font-size: 14px; min-width: 70px; text-align: right; }
+.az-rank-badge {
+    width: 44px; height: 44px; flex-shrink: 0;
+    background-repeat: no-repeat;
+    background-size: 1000% 500%;   /* 10 cols x 5 rows sprite sheet */
+    image-rendering: pixelated;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+.az-header-left { display: flex; flex-direction: column; min-width: 96px; }
+.az-rank { font-size: 11px; opacity: 0.85; letter-spacing: 0.02em; }
+.az-level { font-weight: 800; font-size: 17px; }
+.az-xp-bar { flex: 1; height: 12px; border-radius: 999px; background: rgba(0,0,0,0.28); overflow: hidden; position: relative; }
+.az-xp-fill {
+    position: relative; height: 100%;
+    background: linear-gradient(90deg, var(--sage-light), #c9e6a8);
+    transition: width 0.3s ease; overflow: hidden;
+}
+.az-xp-fill::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+    transform: translateX(-100%); animation: az-shimmer 2.6s ease-in-out infinite;
+}
+.az-xp-label { font-size: 12px; opacity: 0.9; min-width: 92px; text-align: right; }
+.az-skill { font-weight: 800; font-size: 15px; min-width: 46px; text-align: right; color: #ffe08a; }
+.az-skill::before { content: "\2726 "; }  /* ✦ */
+.az-coins { font-weight: 800; font-size: 15px; min-width: 72px; text-align: right; }
 .az-coins::before { content: "\1FA99  "; }
+.az-coins.az-coin-pop { animation: az-coin-pop 0.45s ease; }
 
-.az-tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--cream); flex-shrink: 0; }
+.az-tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--forest-deep); flex-shrink: 0; }
 .az-tab-btn {
-    background: transparent; border: none; color: var(--sage-dark); opacity: 0.6;
+    background: transparent; border: none; color: var(--cream-light); opacity: 0.55;
     padding: 8px 16px; border-radius: 10px 10px 0 0; cursor: pointer; font-size: 13px; font-weight: 600;
 }
-.az-tab-btn.active { opacity: 1; background: var(--cream-light); color: var(--sage-dark); }
+.az-tab-btn:hover { opacity: 0.85; }
+.az-tab-btn.active { opacity: 1; background: var(--cream-light); color: var(--forest-deep); }
 
-.az-main { flex: 1; overflow: auto; padding: 16px; }
+.az-main { flex: 1; overflow: auto; padding: 16px; background: var(--canvas, #1e2126); }
 .az-tab-panel { display: none; }
 .az-tab-panel.active { display: block; }
+/* Outdoor backdrop scoped to the zoo tab so the other tabs keep their dark theme */
+#az-tab-zoo.az-tab-panel {
+    padding: 22px 12px 28px; border-radius: 16px; min-height: 100%;
+    background:
+        radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,0.35), transparent 60%),
+        linear-gradient(180deg, #bfe4f2 0%, #d7edcf 42%, #bfdd9c 100%);
+}
+
+/* Zoo grounds -- framed grass board */
+.az-map {
+    position: relative;
+    width: max-content;
+    margin: 6px auto 0;
+    padding: 10px;
+    border-radius: 16px;
+    background:
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0 56px, transparent 56px 112px),
+        linear-gradient(180deg, #8fc568, #79ad55);
+    border: 6px solid var(--wood);
+    box-shadow:
+        inset 0 0 0 2px var(--wood-dark),
+        inset 0 2px 10px rgba(0,0,0,0.18),
+        0 10px 26px rgba(0,0,0,0.28);
+    overflow: hidden;
+}
+.az-map-title {
+    position: absolute; top: 0; left: 50%; transform: translate(-50%, -2px);
+    background: linear-gradient(180deg, var(--forest) 0%, var(--forest-deep) 100%);
+    color: var(--cream-light); font-weight: 800; font-size: 12px; letter-spacing: 0.08em;
+    padding: 4px 18px 5px; border-radius: 0 0 10px 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3); z-index: 4; text-transform: uppercase;
+}
+.az-map-clouds {
+    position: absolute; inset: -20% -20% -20% -20%; z-index: 3; pointer-events: none;
+    background:
+        radial-gradient(60px 34px at 20% 30%, rgba(255,255,255,0.22), transparent 70%),
+        radial-gradient(90px 44px at 60% 65%, rgba(255,255,255,0.18), transparent 70%),
+        radial-gradient(70px 38px at 85% 20%, rgba(255,255,255,0.20), transparent 70%);
+    animation: az-cloud-drift 34s linear infinite;
+}
 
 /* Zoo grid */
 .az-grid {
+    position: relative; z-index: 1;
     display: grid;
-    grid-template-columns: repeat(11, 42px);
-    grid-template-rows: repeat(11, 42px);
-    gap: 2px;
+    grid-template-columns: repeat(11, 56px);
+    grid-template-rows: repeat(11, 56px);
+    gap: 0;
     width: max-content;
-    margin: 0 auto;
+    margin: 14px auto 4px;
 }
 .az-tile {
-    width: 42px; height: 42px; border-radius: 6px; position: relative;
+    width: 56px; height: 56px; position: relative;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.05);
+    background: var(--grass-a);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
 }
-.az-tile.owned { background: rgba(111,191,115,0.12); border-color: rgba(111,191,115,0.3); }
-.az-tile.buyable { background: rgba(255,255,255,0.06); border: 1px dashed rgba(255,255,255,0.25); cursor: pointer; }
-.az-tile.buyable:hover { background: rgba(255,255,255,0.12); }
-.az-tile.buyable .az-tile-cost { font-size: 9px; opacity: 0.8; }
-.az-tile.locked { opacity: 0.25; }
+.az-tile.az-tile-alt { background: var(--grass-b); }
+.az-tile.owned { background: var(--grass-a); }
+.az-tile.owned.az-tile-alt { background: var(--grass-b); }
+.az-tile.buyable {
+    cursor: pointer;
+    background: rgba(255,236,170,0.35);
+    box-shadow: inset 0 0 0 2px rgba(214,178,74,0.9);
+    animation: az-buyable-pulse 1.8s ease-in-out infinite;
+}
+.az-tile.buyable:hover { background: rgba(255,236,170,0.6); transform: translateY(-1px); z-index: 2; }
+.az-tile.buyable .az-tile-cost {
+    font-size: 10px; font-weight: 800; color: #7a5a12;
+    background: rgba(255,255,255,0.75); padding: 1px 6px; border-radius: 999px;
+}
+/* Unclaimed land: keep the grass green, just darken it into "wilderness" so it
+   reads as expandable territory rather than a grey hole. */
+.az-tile.locked {
+    filter: brightness(0.72) saturate(0.85);
+    box-shadow: inset 0 0 12px rgba(20,45,15,0.35);
+}
 .az-tile.empty-owned { cursor: pointer; }
-.az-tile.empty-owned::after { content: "+"; opacity: 0.35; font-size: 18px; }
-.az-tile img { width: 32px; height: 32px; image-rendering: pixelated; cursor: pointer; }
+.az-tile.empty-owned::after {
+    content: "\1F331"; opacity: 0.5; font-size: 20px;
+    filter: grayscale(0.2);
+}
+.az-tile.empty-owned:hover::after { opacity: 0.9; transform: scale(1.1); }
+.az-tile.empty-owned::before {
+    content: ""; position: absolute; inset: 6px; border-radius: 8px;
+    border: 2px dashed rgba(255,255,255,0.5); pointer-events: none;
+}
+/* Inset habitat patch -- the animal brings its own biome terrain */
+.az-tile .az-habitat {
+    position: absolute; inset: 3px; border-radius: 9px;
+    background-repeat: no-repeat; image-rendering: pixelated;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.25);
+    overflow: hidden;
+}
+.az-tile .az-sprite {
+    position: relative; z-index: 2;
+    width: 44px; height: 44px; image-rendering: pixelated; cursor: pointer;
+    filter: drop-shadow(0 3px 2px rgba(0,0,0,0.35));
+    animation: az-bob 2.8s ease-in-out infinite;
+}
 .az-tile .az-fence {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    image-rendering: pixelated; pointer-events: none; cursor: default;
+    position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px);
+    z-index: 1; image-rendering: pixelated; pointer-events: none; cursor: default;
 }
 
-/* Collection / dex */
-.az-dex { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-.az-dex-card {
-    background: var(--canvas-elevated, #2b2f36); border: 1px solid var(--border, #3a3f47); border-radius: 12px;
-    padding: 10px; text-align: center;
+@keyframes az-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes az-shimmer { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(200%); } }
+@keyframes az-coin-pop { 0% { transform: scale(1); } 35% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes az-cloud-drift { 0% { transform: translateX(-6%); } 100% { transform: translateX(6%); } }
+@keyframes az-buyable-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 2px rgba(214,178,74,0.6); }
+    50% { box-shadow: inset 0 0 0 2px rgba(214,178,74,1), 0 0 10px rgba(214,178,74,0.5); }
 }
-.az-dex-card img { width: 56px; height: 56px; image-rendering: pixelated; }
-.az-dex-card.locked img { filter: grayscale(1) brightness(0.3); }
-.az-dex-card .az-dex-name { font-weight: 700; font-size: 13px; margin-top: 4px; }
-.az-dex-card .az-dex-meta { font-size: 11px; opacity: 0.7; margin-top: 2px; }
-.az-dex-card .az-rarity { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; margin-top: 4px; }
+
+/* Skill Tree */
+.az-tree-head { max-width: 720px; margin: 0 auto 10px; text-align: center; }
+.az-tree-title {
+    display: block; font-size: 16px; font-weight: 800; letter-spacing: 0.03em;
+    color: var(--accent-glow);
+}
+.az-tree-sub { display: block; font-size: 12px; opacity: 0.7; line-height: 1.5; margin-top: 3px; }
+.az-tree-scroll { overflow: auto; }
+/* Night-sky backdrop so the colored branches read like a constellation */
+.az-tree {
+    position: relative; margin: 0 auto;
+    border-radius: 16px;
+    background:
+        radial-gradient(120% 90% at 50% 108%, rgba(99,120,90,0.22), transparent 60%),
+        linear-gradient(180deg, #171b22 0%, #10141a 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), inset 0 2px 20px rgba(0,0,0,0.4);
+}
+.az-tree-svg { position: absolute; inset: 0; pointer-events: none; }
+
+.az-node {
+    position: absolute; width: 60px; height: 60px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 2;
+    background: radial-gradient(circle at 50% 35%, #2b323c, #1a1f26);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.az-node-sprite { width: 44px; height: 44px; image-rendering: pixelated; pointer-events: none; }
+
+/* Root */
+.az-node-root {
+    background: radial-gradient(circle at 50% 35%, #3f5240, #2f4029);
+    box-shadow: 0 0 0 3px rgba(143,197,104,0.5), 0 2px 8px rgba(0,0,0,0.5);
+}
+.az-node-root-icon { font-size: 26px; }
+
+/* Owned (bought & placeable): solid biome ring + full-color sprite */
+.az-node-owned {
+    border: 3px solid var(--biome-color);
+    box-shadow: 0 0 12px -1px var(--biome-color), 0 2px 6px rgba(0,0,0,0.5);
+}
+/* Unlocked & affordable: buy with coins. Gold "for sale" glow to distinguish
+   from the skill-point-unlock states. */
+.az-node-buyable {
+    border: 3px solid var(--biome-color);
+    box-shadow: 0 0 10px -1px var(--biome-color);
+    animation: az-node-buy-pulse 1.8s ease-in-out infinite;
+}
+/* Unlocked but can't afford the coin price yet */
+.az-node-buypoor { border: 3px solid var(--biome-color); opacity: 0.9; }
+/* Unlockable now with skill points: pulsing biome ring, invites a click */
+.az-node-ready {
+    border: 3px solid var(--biome-color);
+    animation: az-node-pulse 1.8s ease-in-out infinite;
+}
+.az-node-ready .az-node-sprite { filter: brightness(0.92) saturate(0.9); }
+/* Prereq met but not enough skill points: dim biome ring */
+.az-node-avail {
+    border: 3px dashed color-mix(in srgb, var(--biome-color) 70%, #6b7280);
+}
+.az-node-avail .az-node-sprite { filter: grayscale(0.5) brightness(0.7); opacity: 0.85; }
+/* Tier not reachable yet: silhouette */
+.az-node-tierlocked {
+    border: 3px solid #3a3f47;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.6);
+}
+.az-node-tierlocked .az-node-sprite { filter: grayscale(1) brightness(0.18); opacity: 0.9; }
+
+.az-node:not(.az-node-root):not(.az-node-owned):hover { transform: scale(1.08); }
+.az-node-ready:hover { box-shadow: 0 0 16px var(--biome-color), 0 2px 8px rgba(0,0,0,0.5); }
+.az-node-buyable:hover { box-shadow: 0 0 16px #ffce4d, 0 2px 8px rgba(0,0,0,0.5); }
+
+.az-node-lock {
+    position: absolute; font-size: 20px; z-index: 3;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+}
+.az-node-cost {
+    position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 10px; font-weight: 700; line-height: 1;
+    background: rgba(10,12,16,0.92); color: #ffe08a;   /* ✦ skill-point price */
+    padding: 3px 7px; border-radius: 999px; z-index: 3;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+/* Coin (buy) price uses a warm gold pill so the two-step flow is legible */
+.az-node-cost.coin { color: #1c140a; background: linear-gradient(180deg, #ffd35c, #f0a92e); }
+/* Star requirement (tier not yet reached) */
+.az-node-cost.star { color: #ffd0d0; background: rgba(60,20,20,0.92); }
+
+/* Tier gate marker sitting on a biome trunk */
+.az-gate {
+    position: absolute; transform: translate(-50%, -50%);
+    white-space: nowrap; font-size: 10px; font-weight: 800; line-height: 1;
+    padding: 3px 8px; border-radius: 999px; z-index: 2;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.az-gate span { font-size: 8px; opacity: 0.85; margin-left: 1px; }
+.az-gate.open { color: #10141a; background: var(--biome-color); }
+.az-gate.closed { color: #cdd3da; background: #23272e; border: 1px solid #3a3f47; }
+
+/* Biome trunk header + live star total */
+.az-biome-head {
+    position: absolute; transform: translateX(-50%);
+    white-space: nowrap; font-size: 12px; font-weight: 800; letter-spacing: 0.02em;
+    color: var(--biome-color); z-index: 2;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+}
+.az-biome-head b { color: #ffe08a; }
+.az-node-label {
+    position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 10px; font-weight: 600; opacity: 0.85;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none;
+}
+.az-node-owned .az-node-label { color: var(--biome-color); opacity: 1; }
+.az-node-tierlocked .az-node-label { opacity: 0.5; }
+
+@keyframes az-node-pulse {
+    0%, 100% { box-shadow: 0 0 6px -1px var(--biome-color), 0 2px 6px rgba(0,0,0,0.5); }
+    50% { box-shadow: 0 0 16px 1px var(--biome-color), 0 2px 6px rgba(0,0,0,0.5); }
+}
+@keyframes az-node-buy-pulse {
+    0%, 100% { box-shadow: 0 0 6px -1px var(--biome-color), 0 2px 6px rgba(0,0,0,0.5); }
+    50% { box-shadow: 0 0 14px 1px #ffce4d, 0 2px 6px rgba(0,0,0,0.5); }
+}
+
+/* Rarity badge palette (kept for reuse elsewhere) */
+.az-rarity { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; }
 .az-rarity.common { background: #4a4f57; }
 .az-rarity.uncommon { background: #2f6b3a; }
 .az-rarity.rare { background: #2f5c8f; }
 .az-rarity.epic { background: #6b3f9e; }
 .az-rarity.legendary { background: #a8792f; }
-.az-dex-card button {
-    margin-top: 6px; padding: 6px 14px; font-size: 11px;
-    background: var(--accent-dim);
-}
-.az-dex-card button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
-.az-dex-card button:disabled::before { display: none; }
 
 /* Quests */
 .az-quests { display: flex; flex-direction: column; gap: 10px; max-width: 480px; margin: 0 auto; }
@@ -109,9 +330,61 @@ body {
 .az-quest-bar { position: relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08);
     overflow: hidden; margin: 8px 0 6px; }
 .az-quest-bar-fill { height: 100%; background: linear-gradient(90deg, #6fbf73, #3f9142); transition: width 0.3s ease; }
-.az-quest-meta { display: flex; justify-content: space-between; font-size: 11px; opacity: 0.8; }
-.az-quest-reward::before { content: "\1F381 "; }
+.az-quest-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.8; }
 .az-quests-empty { text-align: center; opacity: 0.6; padding: 30px 0; font-size: 13px; }
+
+/* A completed-but-unopened quest glows to draw attention to its loot box. */
+.az-quest-card.unopened { border-color: rgba(224,169,46,0.7);
+    box-shadow: 0 0 0 1px rgba(224,169,46,0.35), 0 0 14px rgba(224,169,46,0.25); }
+.az-loot-teaser { opacity: 0.7; }
+.az-loot-open {
+    border: none; border-radius: 999px; cursor: pointer; color: #1c1608; font-weight: 800;
+    font-size: 11px; padding: 5px 12px; background: linear-gradient(90deg, #f2c94c, #e0a92e);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35); animation: az-loot-pulse 1.4s ease-in-out infinite;
+}
+.az-loot-open:hover { filter: brightness(1.08); }
+.az-loot-open:disabled { opacity: 0.6; cursor: default; animation: none; }
+@keyframes az-loot-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+.az-reward-chip {
+    font-weight: 800; font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    color: #fff; border: 1.5px solid var(--rarity, #9aa0a6);
+    background: rgba(255,255,255,0.08);
+    background: color-mix(in srgb, var(--rarity, #9aa0a6) 22%, transparent);
+}
+
+/* Loot box case-opening reveal */
+.az-case-modal { max-width: 460px; }
+.az-case { position: relative; margin: 4px 0 12px; }
+.az-case-viewport {
+    position: relative; overflow: hidden; border-radius: 10px; padding: 8px 0;
+    background: rgba(0,0,0,0.28); border: 1px solid var(--border, #3a3f47);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+            mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.az-case-marker {
+    position: absolute; left: 50%; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px;
+    background: #f2c94c; border-radius: 2px; z-index: 3;
+    box-shadow: 0 0 8px 1px rgba(242,201,76,0.7);
+}
+.az-case-strip { display: flex; gap: 8px; will-change: transform; }
+.az-case-item {
+    flex: 0 0 88px; width: 88px; height: 88px; box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    border-radius: 8px; border-top: 3px solid var(--rarity, #9aa0a6);
+    background: #2b2f36;
+    background: color-mix(in srgb, var(--rarity, #9aa0a6) 16%, #2b2f36);
+}
+.az-case-item.win { box-shadow: 0 0 0 2px var(--rarity, #9aa0a6), 0 0 16px var(--rarity, #9aa0a6); }
+.az-case-icon { font-size: 30px; line-height: 1; height: 40px; display: flex; align-items: center; }
+.az-case-icon img { width: 40px; height: 40px; image-rendering: pixelated; }
+.az-case-item-label { font-size: 10px; font-weight: 700; opacity: 0.9; }
+.az-case-result { text-align: center; opacity: 0; transition: opacity 0.25s ease; }
+.az-case-result.show { opacity: 1; }
+.az-case-rarity {
+    font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--rarity, #9aa0a6);
+}
+.az-case-prize { font-size: 15px; font-weight: 800; margin: 4px 0 12px; }
 
 /* Settings */
 .az-settings { max-width: 480px; margin: 40px auto 0; text-align: center; }

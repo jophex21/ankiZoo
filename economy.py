@@ -11,23 +11,13 @@ AGAIN_HARD_EASES = (1, 2)  # Again, Hard
 _UNDO_HISTORY_LIMIT = 200
 
 
-def _apply_quest_rewards(state, newly_completed: List[Dict[str, Any]]) -> None:
+def _notify_quest_complete(newly_completed: List[Dict[str, Any]]) -> None:
+    # Rewards are no longer granted here -- completing a quest earns a loot box
+    # the player opens from the Quests tab (see lootbox.py / zoo_dialog claimQuest).
     for quest in newly_completed:
-        if quest.get("reward_type") == "animal":
-            animal_id = quest.get("reward_animal_id")
-            if animal_id and animal_id not in state.owned_animals:
-                state.owned_animals.append(animal_id)
-                notify.show_toast(
-                    "Quest Complete!",
-                    f"{quest['label']} — you earned a new animal!",
-                    kind="quest",
-                )
-                continue
-        amount = int(quest.get("reward_amount", 0))
-        state.coins += amount
         notify.show_toast(
             "Quest Complete!",
-            f"{quest['label']} — +{amount} coins!",
+            f"{quest['label']} — open your loot box in the Quests tab!",
             kind="quest",
         )
 
@@ -65,7 +55,7 @@ def on_reviewer_did_answer(reviewer: Any, card: Any, ease: int) -> None:
         state.last_undo_xp.pop(0)
         state.last_undo_coins.pop(0)
 
-    _apply_quest_rewards(state, newly_completed)
+    _notify_quest_complete(newly_completed)
 
     if new_level > prev_level:
         notify.show_toast("Level Up!", f"You reached level {new_level}!", kind="level_up")
