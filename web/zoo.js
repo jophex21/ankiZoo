@@ -9,6 +9,13 @@
         DATA.catalog.forEach((a) => { catalogById[a.id] = a; });
     }
 
+    // The coin sprite as an inline <img> for any innerHTML context (falls back to
+    // the coin emoji if the sprite didn't ship). Native title tooltips can't show
+    // an image, so anything mentioning coins uses data-tip (setupTooltip) instead.
+    function coinImg() {
+        return DATA.coinUri ? `<img class="az-coin-icon" src="${DATA.coinUri}" alt="coins">` : '\u{1FA99}';
+    }
+
     // ---------- Toasts ----------
     function showToast(message, isError) {
         if (!message) return;
@@ -32,8 +39,8 @@
         modal.innerHTML = '';
     }
 
-    function openPlaceAnimalModal(x, y) {
-        const placedIds = new Set(Object.values(DATA.placedAnimals));
+    function openPlaceAnimalModal(plotId) {
+        const placedIds = new Set(Object.values(DATA.plotAnimals));
         const available = DATA.ownedAnimals.filter((id) => !placedIds.has(id));
         const modal = document.getElementById('az-modal');
         if (available.length === 0) {
@@ -52,7 +59,7 @@
             modal.querySelectorAll('.az-modal-animal-item').forEach((el) => {
                 el.addEventListener('click', () => {
                     const animalId = el.dataset.animalId;
-                    pycmd(`placeAnimal:${x},${y}|${animalId}`);
+                    pycmd(`placeAnimal:${plotId}|${animalId}`);
                     closeModal();
                 });
             });
@@ -61,15 +68,15 @@
         document.getElementById('az-modal-overlay').classList.add('show');
     }
 
-    function openManageTileModal(x, y, animalId) {
+    function openManageTileModal(plotId, animalId) {
         const a = catalogById[animalId];
         const modal = document.getElementById('az-modal');
         modal.innerHTML = `<h3>${a.name}</h3>
             <img src="${a.sprite_idle_uri}" style="width:64px;height:64px;image-rendering:pixelated;display:block;margin:0 auto 10px;">
-            <button class="az-modal-remove">Remove from tile</button>
+            <button class="az-modal-remove">Return to collection</button>
             <button class="az-modal-close">Close</button>`;
         modal.querySelector('.az-modal-remove').addEventListener('click', () => {
-            pycmd(`removeAnimal:${x},${y}`);
+            pycmd(`removeAnimal:${plotId}`);
             closeModal();
         });
         modal.querySelector('.az-modal-close').addEventListener('click', closeModal);
@@ -97,7 +104,7 @@
         } else if (reward.kind === 'skill') {
             icon.textContent = '✦';
         } else {
-            icon.textContent = '\u{1FA99}';
+            icon.innerHTML = coinImg();
         }
         el.appendChild(icon);
         const label = document.createElement('div');
@@ -172,7 +179,7 @@
     }
 
     function caseResultText(reward) {
-        if (reward.kind === 'coins') return `\u{1FA99} ${reward.amount} coins`;
+        if (reward.kind === 'coins') return `${coinImg()} ${reward.amount} coins`;
         if (reward.kind === 'skill') return `✦ ${reward.label}`;
         if (reward.kind === 'animal') return `\u{1F43E} ${reward.label} joined your zoo!`;
         return reward.label || '';
@@ -201,6 +208,164 @@
             if (hexInput) hexInput.value = value;
             if (swatchBtn) swatchBtn.style.backgroundColor = value;
         });
+    }
+
+    function renderReviewerToggles() {
+        Object.entries(DATA.reviewerToggles || {}).forEach(([key, on]) => {
+            const box = document.getElementById(`az-toggle-${key}`);
+            if (box) box.checked = on;
+        });
+    }
+
+    function setupReviewerToggles() {
+        Object.keys(DATA.reviewerToggles || {}).forEach((key) => {
+            const box = document.getElementById(`az-toggle-${key}`);
+            if (box) box.addEventListener('change', () => pycmd(`setReviewerToggle:${key}:${box.checked ? 1 : 0}`));
+        });
+        renderReviewerToggles();
+    }
+
+    // Reviewer appearance rows are generated from DATA.reviewerStyle.schema
+    // (config.REVIEWER_STYLE) so new knobs only need adding in Python.
+    const STYLE_HEX_RE = /^(#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?)?$/;
+    function sendStyle(req) { pycmd('reviewerStyle:' + JSON.stringify(req)); }
+
+    function buildStyleRow(field) {
+        const row = document.createElement('div');
+        row.className = 'az-color-row';
+        const label = document.createElement('span');
+        label.className = 'az-color-label';
+        label.textContent = field.label;
+        row.appendChild(label);
+        let input;
+        if (field.kind === 'choice') {
+            input = document.createElement('select');
+            input.className = 'az-color-hex az-select';
+            field.extra.forEach(([value, text]) => input.add(new Option(text, value)));
+            row.appendChild(input);
+        } else if (field.kind === 'int') {
+            const [min, max, unit] = field.extra;
+            input = document.createElement('input');
+            Object.assign(input, { type: 'number', min, max, step: 1, className: 'az-color-hex' });
+            const unitEl = document.createElement('span');
+            unitEl.className = 'az-style-unit';
+            unitEl.textContent = unit;
+            row.append(input, unitEl);
+        } else {
+            input = document.createElement('input');
+            Object.assign(input, { type: 'text', className: 'az-color-hex', placeholder: 'Theme default' });
+            input.title = '#RRGGBB, or #RRGGBBAA for transparency. Leave blank to follow Anki\'s theme.';
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = 'az-color-swatch';
+            swatch.dataset.swatchFor = field.key;
+            swatch.addEventListener('click', () => sendStyle({ action: 'pick', key: field.key }));
+            row.append(input, swatch);
+        }
+        input.dataset.styleKey = field.key;
+        input.addEventListener('change', () => {
+            if (field.kind === 'color' && !STYLE_HEX_RE.test(input.value.trim())) {
+                showToast('Use #RRGGBB or #RRGGBBAA (or leave blank).', true);
+                return;
+            }
+            if (field.kind === 'int' && input.value === '') return;
+            sendStyle({ action: 'set', key: field.key, value: field.kind === 'int' ? Number(input.value) : input.value.trim() });
+        });
+        return row;
+    }
+
+    function renderReviewerStyle() {
+        const st = DATA.reviewerStyle;
+        if (!st) return;
+        document.querySelectorAll('[data-style-key]').forEach((input) => {
+            if (document.activeElement !== input) input.value = st.values[input.dataset.styleKey];
+        });
+        document.querySelectorAll('[data-swatch-for]').forEach((sw) => {
+            const value = st.values[sw.dataset.swatchFor];
+            sw.style.background = value || '';
+            sw.classList.toggle('az-swatch-theme', !value);
+        });
+        // Live-apply Zoo-window colors; 'initial' makes var() use its fallback (theme/default).
+        st.schema.filter((f) => f.group === 'zoo').forEach((f) => {
+            const v = st.values[f.key];
+            const css = f.kind === 'int' ? (f.extra[2] === '%' ? v / 100 : v + f.extra[2]) : (v || 'initial');
+            document.documentElement.style.setProperty(`--az-${f.key}`, css);
+        });
+        const minutes = document.getElementById('az-pomo-minutes');
+        if (minutes && document.activeElement !== minutes) minutes.value = DATA.pomodoroMinutes;
+        const select = document.getElementById('az-preset-select');
+        if (select) {
+            const prev = select.value;
+            select.innerHTML = '';
+            if (!st.presets.length) select.add(new Option('No saved presets', ''));
+            st.presets.forEach((name) => select.add(new Option(name, name)));
+            if (st.presets.includes(prev)) select.value = prev;
+        }
+    }
+
+    function openStyleResetModal() {
+        const modal = document.getElementById('az-modal');
+        modal.innerHTML = `<h3>Reset appearance?</h3>
+            <p>The Zoo window, Pomodoro timer and reviewer header go back to their default look. Saved presets are kept.</p>
+            <button class="az-modal-remove" id="az-style-reset-confirm">Reset</button>
+            <button class="az-modal-close">Cancel</button>`;
+        modal.querySelector('#az-style-reset-confirm').addEventListener('click', () => {
+            sendStyle({ action: 'reset' });
+            closeModal();
+        });
+        modal.querySelector('.az-modal-close').addEventListener('click', closeModal);
+        document.getElementById('az-modal-overlay').classList.add('show');
+    }
+
+    function setupReviewerStyle() {
+        const st = DATA.reviewerStyle;
+        if (!st) return;
+        st.schema.forEach((field) => {
+            const host = document.getElementById(`az-style-rows-${field.group}`);
+            if (host) host.appendChild(buildStyleRow(field));
+        });
+        const minutes = document.getElementById('az-pomo-minutes');
+        minutes.addEventListener('change', () => {
+            if (minutes.value !== '') pycmd(`setPomodoroMinutes:${minutes.value}`);
+        });
+        const nameInput = document.getElementById('az-preset-name');
+        document.getElementById('az-preset-save').addEventListener('click', () => {
+            sendStyle({ action: 'savePreset', name: nameInput.value });
+            nameInput.value = '';
+        });
+        const select = document.getElementById('az-preset-select');
+        document.getElementById('az-preset-load').addEventListener('click', () => {
+            if (select.value) sendStyle({ action: 'loadPreset', name: select.value });
+        });
+        document.getElementById('az-preset-delete').addEventListener('click', () => {
+            if (select.value) sendStyle({ action: 'deletePreset', name: select.value });
+        });
+        document.getElementById('az-style-reset').addEventListener('click', openStyleResetModal);
+        renderReviewerStyle();
+    }
+
+    // One floating tooltip for every [data-tip] element (HTML allowed, unlike title).
+    function setupTooltip() {
+        const tip = document.createElement('div');
+        tip.className = 'az-tip';
+        document.body.appendChild(tip);
+        let current = null;
+        const place = (e) => {
+            const pad = 8;
+            let x = e.clientX + 14, y = e.clientY + 16;
+            if (x + tip.offsetWidth + pad > window.innerWidth) x = e.clientX - tip.offsetWidth - 10;
+            if (y + tip.offsetHeight + pad > window.innerHeight) y = e.clientY - tip.offsetHeight - 10;
+            tip.style.left = Math.max(pad, x) + 'px';
+            tip.style.top = Math.max(pad, y) + 'px';
+        };
+        document.addEventListener('mouseover', (e) => {
+            const el = e.target.closest && e.target.closest('[data-tip]');
+            if (el === current) return;
+            current = el;
+            tip.classList.toggle('show', !!el);
+            if (el) { tip.innerHTML = el.dataset.tip; place(e); }
+        });
+        document.addEventListener('mousemove', (e) => { if (current) place(e); });
     }
 
     function setupColorPickers() {
@@ -258,90 +423,326 @@
             void coinsEl.offsetWidth;  // restart the pulse animation
             coinsEl.classList.add('az-coin-pop');
         }
-        coinsEl.textContent = DATA.coins;
+        coinsEl.innerHTML = coinImg() + DATA.coins;
         prevCoins = DATA.coins;
     }
 
-    // Renders a placed entity onto an owned tile: an inset habitat patch
-    // carrying its own biome terrain, an optional fence, and the bobbing sprite.
-    // Buildings (once their art lands) reuse this with their own sprite/terrain
-    // and typically `fence: false` -- see the placement branch in renderGrid.
-    function renderPlaceable(tile, opts) {
-        const terrain = opts.terrain;
-        const terrainImg = terrain && DATA.terrainImages[terrain.biome];
-        if (terrainImg) {
-            const habitat = document.createElement('div');
-            habitat.className = 'az-habitat';
-            habitat.style.backgroundImage = `url(${terrainImg.uri})`;
-            habitat.style.backgroundPosition = `-${terrain.ox}px -${terrain.oy}px`;
-            habitat.style.backgroundSize = `${terrainImg.w}px ${terrainImg.h}px`;
-            tile.appendChild(habitat);
-        }
-        if (opts.fence) {
-            const fence = document.createElement('img');
-            fence.className = 'az-fence';
-            fence.src = DATA.fenceUri;
-            tile.appendChild(fence);
-        }
-        const img = document.createElement('img');
-        img.dataset.idleUri = opts.idleUri;
-        img.dataset.blinkUri = opts.blinkUri || opts.idleUri;
-        img.src = img.dataset.idleUri;
-        img.className = 'az-sprite';
-        if (opts.onClick) img.addEventListener('click', opts.onClick);
-        tile.appendChild(img);
+    // ---------- Zoo map ----------
+    // The park is one big scrollable canvas: biome districts (each a block of
+    // square plots that grows with its animal count) ringed around a central
+    // shops plaza, joined by curved paths. Plots fill left-to-right per district.
+    // The canvas is deliberately kept near the stage's own aspect (~1.65:1). fitScale()
+    // takes the SMALLER of the width/height ratios, so a tall canvas in a wide stage
+    // fits on height alone and everything renders tiny -- wide districts avoid that.
+    const MAP_W = 1740, MAP_H = 946;
+    const TILE = 62, PITCH = 68, D_COLS = 7;         // district grid, 6px between plots
+    const PLAZA_COLS = 5, PLAZA_ROWS = 4;            // 20 building slots
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    // Top-left anchor of each district's plot grid, keyed by biome name. Districts ring
+    // the plaza in three columns, and the bottom-left is left open on purpose -- that's
+    // where the map key floats, and it must not cover a district at the fit view.
+    // ponytail: hand-placed so nothing collides at the current catalog size --
+    // districts grow downward, so re-check spacing when a biome gains animals.
+    const DISTRICT_ANCHORS = {
+        Arctic:  { x: 70, y: 70 },   Ocean:  { x: 70, y: 272 },
+        Savanna: { x: 612, y: 70 },  Forest: { x: 612, y: 678 },
+        Jungle:  { x: 1154, y: 70 }, 'Desert & Outback': { x: 1154, y: 408 },
+    };
+    const PLAZA_CENTER = { x: 847, y: 473 };
+    // ponytail: hand-scattered into the bands between parcels, clear of the creek.
+    // Re-check against the district extents if any anchor above moves.
+    const TREES = [[300, 28], [850, 28], [1400, 28],
+                   [28, 300], [28, 700], [28, 900],
+                   [1220, 700], [1380, 640], [1520, 760], [1280, 880], [1450, 890],
+                   [1180, 900], [1600, 620],
+                   [480, 620], [520, 900], [300, 910],
+                   [620, 918], [900, 918], [1080, 918], [1350, 918]];
+    const TREE_SVG =
+        '<svg viewBox="0 0 46 52" xmlns="http://www.w3.org/2000/svg">' +
+        '<ellipse cx="23" cy="48" rx="13" ry="3" fill="rgba(42,53,36,0.18)"/>' +
+        '<path d="M22 46v-9h4v9z" fill="#6d5233"/>' +
+        '<path d="M24 4 36 24H12z" fill="#4a9450"/>' +
+        '<path d="M24 14 39 39H9z" fill="#3c8244"/>' +
+        '<path d="M24 4 36 24h-12z" fill="rgba(0,0,0,0.10)"/>' +
+        '<path d="M24 14 39 39H24z" fill="rgba(0,0,0,0.10)"/>' +
+        '</svg>';
+
+    let mapScale = 1, mapTx = 0, mapTy = 0, mapFitted = false;
+
+    function biomeCounts() {
+        const counts = {};
+        DATA.catalog.forEach((a) => { counts[a.biome] = (counts[a.biome] || 0) + 1; });
+        return counts;
     }
 
-    // ---------- Grid ----------
-    function renderGrid() {
-        const grid = document.getElementById('az-grid');
-        grid.innerHTML = '';
-        const ownedSet = new Set(DATA.ownedTiles.map((t) => t[0] + ',' + t[1]));
+    function svgEl(name, attrs) {
+        const el = document.createElementNS(SVG_NS, name);
+        Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
+        return el;
+    }
 
-        for (let y = 0; y < DATA.gridSize; y++) {
-            for (let x = 0; x < DATA.gridSize; x++) {
-                const key = x + ',' + y;
-                const tile = document.createElement('div');
-                tile.className = 'az-tile';
-                if ((x + y) % 2 === 0) tile.classList.add('az-tile-alt');
-                tile.dataset.x = x;
-                tile.dataset.y = y;
+    // A gentle curve from a to b (perpendicular nudge on the control point).
+    function curvePath(ax, ay, bx, by) {
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+        return `M${ax},${ay} Q${mx - (dy / len) * 30},${my + (dx / len) * 30} ${bx},${by}`;
+    }
 
-                if (ownedSet.has(key)) {
-                    const animalId = DATA.placedAnimals[key];
-                    if (animalId && catalogById[animalId]) {
-                        tile.classList.add('owned');
-                        renderPlaceable(tile, {
-                            terrain: DATA.tileTerrain[key],
-                            fence: true,
-                            idleUri: catalogById[animalId].sprite_idle_uri,
-                            blinkUri: catalogById[animalId].sprite_blink_uri,
-                            onClick: () => openManageTileModal(x, y, animalId),
-                        });
-                    } else {
-                        tile.classList.add('owned', 'empty-owned');
-                        tile.addEventListener('click', () => openPlaceAnimalModal(x, y));
-                    }
-                } else if (isAdjacentToOwned(x, y, ownedSet)) {
-                    tile.classList.add('buyable');
-                    tile.title = `Buy tile: ${DATA.nextTileCost} coins`;
-                    const costLabel = document.createElement('div');
-                    costLabel.className = 'az-tile-cost';
-                    costLabel.textContent = DATA.nextTileCost;
-                    tile.appendChild(costLabel);
-                    tile.addEventListener('click', () => pycmd(`buyTile:${x},${y}`));
-                } else {
-                    tile.classList.add('locked');
-                }
+    function makePlot(cx, cy) {
+        const el = document.createElement('div');
+        el.className = 'az-plot';
+        el.style.left = cx + 'px';
+        el.style.top = cy + 'px';
+        return el;
+    }
 
-                grid.appendChild(tile);
+    function renderDistrict(canvas, biome, count) {
+        const anchor = DISTRICT_ANCHORS[biome];
+        if (!anchor) return;
+        const color = (DATA.biomeColors || {})[biome] || '#8aa66a';
+        const rows = Math.max(1, Math.ceil(count / D_COLS));
+        const usedCols = Math.min(count, D_COLS);
+        const w = (usedCols - 1) * PITCH + TILE, h = (rows - 1) * PITCH + TILE;
+
+        const panel = document.createElement('div');
+        panel.className = 'az-district';
+        panel.style.left = (anchor.x - 14) + 'px';
+        panel.style.top = (anchor.y - 14) + 'px';
+        panel.style.width = (w + 28) + 'px';
+        panel.style.height = (h + 28) + 'px';
+        // lighter wash than a UI card, plus a fine survey hatch so parcels differ in
+        // texture as well as hue (the border comes from .az-district in CSS)
+        panel.style.background =
+            `repeating-linear-gradient(45deg, ${hexA(color, 0.16)} 0 3px, transparent 3px 7px), ` +
+            `linear-gradient(160deg, ${hexA(color, 0.34)}, ${hexA(color, 0.16)})`;
+        let placed = 0;
+        for (let i = 0; i < count; i++) if (DATA.plotAnimals[`${biome}-${i}`]) placed++;
+        panel.innerHTML = `<span class="az-sign">${biome}</span><span class="az-count">${placed}/${count}</span>`;
+        canvas.appendChild(panel);
+
+        const unlockedSet = new Set(DATA.unlockedPlots || []);
+        let unlockedInBiome = 0;
+        for (let i = 0; i < count; i++) if (unlockedSet.has(`${biome}-${i}`)) unlockedInBiome++;
+
+        for (let i = 0; i < count; i++) {
+            const plotId = `${biome}-${i}`;
+            const col = i % D_COLS, row = Math.floor(i / D_COLS);
+            const cx = anchor.x + col * PITCH + TILE / 2;
+            const cy = anchor.y + row * PITCH + TILE / 2;
+            const el = makePlot(cx, cy);
+            const animalId = DATA.plotAnimals[plotId];
+
+            if (animalId && catalogById[animalId]) {
+                el.classList.add('az-plot-exhibit');
+                const terr = DATA.terrainImages[biome];
+                if (terr) {
+                    // Terrain lives in its own layer so it can be blurred without the sprite.
+                    const wrap = document.createElement('div');
+                    wrap.className = 'az-plot-bg-wrap';
+                    const bg = document.createElement('div');
+                    bg.className = 'az-plot-bg';
+                    bg.style.backgroundImage = `url(${terr.uri})`;
+                    wrap.appendChild(bg);
+                    el.appendChild(wrap);
+                } else el.style.background = hexA(color, 0.85);
+                const a = catalogById[animalId];
+                const img = document.createElement('img');
+                img.className = 'az-sprite';
+                img.dataset.idleUri = a.sprite_idle_uri;
+                img.dataset.blinkUri = a.sprite_blink_uri || a.sprite_idle_uri;
+                img.src = img.dataset.idleUri;
+                el.appendChild(img);
+                el.title = a.name;
+                el.addEventListener('click', () => openManageTileModal(plotId, animalId));
+            } else if (i < unlockedInBiome) {
+                el.classList.add('az-plot-tape');
+                el.title = 'Empty enclosure -- place an animal';
+                el.addEventListener('click', () => openPlaceAnimalModal(plotId));
+            } else if (i === unlockedInBiome) {
+                el.classList.add('az-plot-buyable');
+                el.title = `Clear this plot: ${DATA.nextPlotCost} coins`;
+                const cost = document.createElement('div');
+                cost.className = 'az-plot-cost';
+                cost.innerHTML = coinImg() + DATA.nextPlotCost;
+                el.appendChild(cost);
+                el.addEventListener('click', () => pycmd(`unlockPlot:${plotId}`));
+            } else {
+                el.classList.add('az-plot-locked');
             }
+            canvas.appendChild(el);
         }
     }
 
-    function isAdjacentToOwned(x, y, ownedSet) {
-        return ownedSet.has((x + 1) + ',' + y) || ownedSet.has((x - 1) + ',' + y) ||
-               ownedSet.has(x + ',' + (y + 1)) || ownedSet.has(x + ',' + (y - 1));
+    function renderPlaza(canvas) {
+        const cols = PLAZA_COLS, rows = PLAZA_ROWS;
+        const w = (cols - 1) * PITCH + TILE, h = (rows - 1) * PITCH + TILE;
+        const ax = PLAZA_CENTER.x - w / 2, ay = PLAZA_CENTER.y - h / 2;
+        const panel = document.createElement('div');
+        panel.className = 'az-district';
+        panel.style.left = (ax - 14) + 'px';
+        panel.style.top = (ay - 14) + 'px';
+        panel.style.width = (w + 28) + 'px';
+        panel.style.height = (h + 28) + 'px';
+        panel.style.background =
+            'repeating-linear-gradient(45deg, rgba(140,106,68,0.10) 0 3px, transparent 3px 7px), ' +
+            'linear-gradient(160deg, rgba(228,220,198,0.8), rgba(210,200,170,0.55))';
+        panel.innerHTML = '<span class="az-sign">Plaza</span><span class="az-count">Shops</span>';
+        canvas.appendChild(panel);
+
+        const total = DATA.buildingSlots || 20;
+        for (let i = 0; i < total; i++) {
+            const col = i % cols, row = Math.floor(i / cols);
+            const el = makePlot(ax + col * PITCH + TILE / 2, ay + row * PITCH + TILE / 2);
+            el.classList.add('az-plot-soon');
+            el.style.setProperty('--awn', ['#c96f5a', '#5d8fa8', '#c9a24a'][i % 3]);
+            el.title = 'Shops are coming soon';
+            el.addEventListener('click', () => showToast('Shops are coming soon!', false));
+            canvas.appendChild(el);
+        }
+    }
+
+    // The legend lives outside #az-map-canvas (renderMap wipes that), so it's
+    // refreshed by hand on every state push.
+    function renderMapKey(counts) {
+        const tally = document.getElementById('az-map-tally');
+        if (tally) {
+            const total = Object.keys(counts).reduce((n, b) => n + counts[b], 0);
+            let open = 0;
+            Object.keys(DATA.plotAnimals || {}).forEach((id) => { if (DATA.plotAnimals[id]) open++; });
+            tally.textContent = `${open} of ${total} enclosures open`;
+        }
+        const cost = document.getElementById('az-map-key-cost');
+        if (cost) cost.innerHTML = 'For sale &middot; ' + coinImg() + DATA.nextPlotCost;
+    }
+
+    function renderMap() {
+        const canvas = document.getElementById('az-map-canvas');
+        if (!canvas) return;
+        canvas.innerHTML = '';
+        canvas.style.width = MAP_W + 'px';
+        canvas.style.height = MAP_H + 'px';
+
+        const grounds = document.createElement('div');
+        grounds.className = 'az-map-grounds';
+        canvas.appendChild(grounds);
+
+        // creek down the right edge
+        const creek = svgEl('svg', { class: 'az-map-creek', width: MAP_W, height: MAP_H, viewBox: `0 0 ${MAP_W} ${MAP_H}`, preserveAspectRatio: 'none' });
+        const creekD = 'M1694,10 C1712,180 1676,340 1698,500 C1716,670 1680,820 1696,940';
+        creek.appendChild(svgEl('path', { d: creekD, fill: 'none', stroke: '#6cc0dd', 'stroke-width': 46, 'stroke-linecap': 'round' }));
+        creek.appendChild(svgEl('path', { d: creekD, fill: 'none', stroke: '#a9e2f2', 'stroke-width': 20, 'stroke-linecap': 'round' }));
+        canvas.appendChild(creek);
+
+        // paths radiating from the plaza to each district
+        const order = DATA.biomeOrder || Object.keys(DISTRICT_ANCHORS);
+        const counts = biomeCounts();
+        const paths = svgEl('svg', { class: 'az-map-paths', width: MAP_W, height: MAP_H, viewBox: `0 0 ${MAP_W} ${MAP_H}`, preserveAspectRatio: 'none' });
+        order.forEach((biome) => {
+            const anchor = DISTRICT_ANCHORS[biome];
+            if (!anchor) return;
+            const n = counts[biome] || 0;
+            const rows = Math.max(1, Math.ceil(n / D_COLS));
+            const usedCols = Math.min(Math.max(n, 1), D_COLS);
+            const dcx = anchor.x + ((usedCols - 1) * PITCH + TILE) / 2;
+            const dcy = anchor.y + ((rows - 1) * PITCH + TILE) / 2;
+            const d = curvePath(PLAZA_CENTER.x, PLAZA_CENTER.y, dcx, dcy);
+            paths.appendChild(svgEl('path', { d, fill: 'none', stroke: '#c9bd9c', 'stroke-width': 26, 'stroke-linecap': 'round' }));
+            paths.appendChild(svgEl('path', { d, fill: 'none', stroke: '#e9e1cc', 'stroke-width': 15, 'stroke-linecap': 'round' }));
+        });
+        canvas.appendChild(paths);
+
+        TREES.forEach(([x, y], i) => {
+            const t = document.createElement('div');
+            t.className = 'az-map-tree';
+            t.style.left = x + 'px';
+            t.style.top = y + 'px';
+            // vary the cluster so a scatter of one drawing doesn't read as a stamp
+            const s = 0.72 + (i % 4) * 0.14;
+            t.style.transform = `translate(-50%,-50%) scale(${s}) scaleX(${i % 3 ? 1 : -1})`;
+            t.innerHTML = TREE_SVG;
+            canvas.appendChild(t);
+        });
+
+        order.forEach((biome) => renderDistrict(canvas, biome, counts[biome] || 0));
+        renderPlaza(canvas);
+        renderMapKey(counts);
+
+        if (!mapFitted) fitMap();
+        else applyMapTransform();
+    }
+
+    // rgba() from a #rrggbb hex and alpha.
+    function hexA(hex, a) {
+        const n = parseInt(hex.slice(1), 16);
+        return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+    }
+
+    // ---------- Map pan + zoom ----------
+    function applyMapTransform() {
+        const canvas = document.getElementById('az-map-canvas');
+        if (canvas) canvas.style.transform = `translate(${mapTx}px,${mapTy}px) scale(${mapScale})`;
+    }
+    function fitScale() {
+        const stage = document.getElementById('az-stage');
+        if (!stage || !stage.clientWidth) return 0.5;
+        return Math.min(stage.clientWidth / MAP_W, stage.clientHeight / MAP_H);
+    }
+    function clampMap() {
+        const stage = document.getElementById('az-stage');
+        if (!stage) return;
+        const vw = stage.clientWidth, vh = stage.clientHeight;
+        mapTx = MAP_W * mapScale < vw ? (vw - MAP_W * mapScale) / 2 : Math.min(0, Math.max(vw - MAP_W * mapScale, mapTx));
+        mapTy = MAP_H * mapScale < vh ? (vh - MAP_H * mapScale) / 2 : Math.min(0, Math.max(vh - MAP_H * mapScale, mapTy));
+    }
+    function fitMap() {
+        const stage = document.getElementById('az-stage');
+        if (!stage || !stage.clientWidth) return;
+        mapScale = fitScale();
+        mapTx = (stage.clientWidth - MAP_W * mapScale) / 2;
+        mapTy = (stage.clientHeight - MAP_H * mapScale) / 2;
+        mapFitted = true;
+        applyMapTransform();
+    }
+    // Sprites are pixel art (image-rendering: pixelated), so they stay crisp up close.
+    const MAP_MAX_ZOOM = 4;
+    function zoomMapAt(px, py, next) {
+        const min = fitScale();
+        next = Math.max(min, Math.min(MAP_MAX_ZOOM, next));
+        mapTx = px - (px - mapTx) * (next / mapScale);
+        mapTy = py - (py - mapTy) * (next / mapScale);
+        mapScale = next;
+        clampMap();
+        applyMapTransform();
+    }
+    function setupMapControls() {
+        const stage = document.getElementById('az-stage');
+        if (!stage || stage.dataset.wired) return;
+        stage.dataset.wired = '1';
+        stage.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const r = stage.getBoundingClientRect();
+            zoomMapAt(e.clientX - r.left, e.clientY - r.top, mapScale * (e.deltaY < 0 ? 1.12 : 0.9));
+        }, { passive: false });
+        let drag = null;
+        stage.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('.az-plot, .az-map-key')) { drag = null; return; }
+            drag = { x: e.clientX, y: e.clientY, tx: mapTx, ty: mapTy };
+            try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+        stage.addEventListener('pointermove', (e) => {
+            if (!drag) return;
+            mapTx = drag.tx + (e.clientX - drag.x);
+            mapTy = drag.ty + (e.clientY - drag.y);
+            clampMap();
+            applyMapTransform();
+        });
+        const endDrag = () => { drag = null; };
+        stage.addEventListener('pointerup', endDrag);
+        stage.addEventListener('pointercancel', endDrag);
+        const hud = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
+        hud('az-map-fit', fitMap);
+        hud('az-map-in', () => zoomMapAt(stage.clientWidth / 2, stage.clientHeight / 2, mapScale * 1.25));
+        hud('az-map-out', () => zoomMapAt(stage.clientWidth / 2, stage.clientHeight / 2, mapScale * 0.8));
     }
 
     // ---------- Skill Tree ----------
@@ -367,7 +768,7 @@
             members.forEach((a) => {
                 let t = tiers.find((x) => x.tier === a.conservation);
                 if (!t) {
-                    t = { tier: a.conservation, name: a.tier_name, threshold: a.tier_threshold, rank: a.tier_rank, animals: [] };
+                    t = { tier: a.conservation, name: a.tier_name, threshold: a.tier_threshold, rank: a.tier_rank, minLevel: a.min_level || 0, animals: [] };
                     tiers.push(t);
                 }
                 t.animals.push(a);
@@ -408,7 +809,7 @@
     function nodeState(a, unlockedSet, ownedSet, stars) {
         if (ownedSet.has(a.id)) return 'owned';
         if (unlockedSet.has(a.id)) return DATA.coins >= a.cost_coins ? 'buyable' : 'buypoor';
-        const accessible = (stars[a.biome] || 0) >= a.tier_threshold;
+        const accessible = (stars[a.biome] || 0) >= a.tier_threshold && (DATA.level || 0) >= (a.min_level || 0);
         if (!accessible) return 'tierlocked';
         return DATA.skillPoints >= a.skill_cost ? 'ready' : 'avail';
     }
@@ -469,16 +870,24 @@
             // Tier gate markers on the trunk
             b.tiers.forEach((t) => {
                 if (t.gateSlot == null) return;
-                const passed = (stars[b.biome] || 0) >= t.threshold;
+                const starsOk = (stars[b.biome] || 0) >= t.threshold;
+                const levelOk = (DATA.level || 0) >= (t.minLevel || 0);
+                const passed = starsOk && levelOk;
                 const gate = document.createElement('div');
                 gate.className = 'az-gate' + (passed ? ' open' : ' closed');
                 gate.style.left = b.x + 'px';
                 gate.style.top = L.slotY(t.gateSlot) + 'px';
                 gate.style.setProperty('--biome-color', b.color);
-                gate.innerHTML = `★${t.threshold} <span>${t.tier}</span>`;
-                gate.title = passed
-                    ? `${t.name} unlocked`
-                    : `Earn ${t.threshold}★ in ${b.biome} to reach ${t.name}`;
+                gate.innerHTML = t.minLevel
+                    ? `★${t.threshold} <span>${t.tier} · Lvl ${t.minLevel}</span>`
+                    : `★${t.threshold} <span>${t.tier}</span>`;
+                if (passed) {
+                    gate.title = `${t.name} unlocked`;
+                } else if (!levelOk) {
+                    gate.title = `Reach level ${t.minLevel} to reach ${t.name} in ${b.biome}`;
+                } else {
+                    gate.title = `Earn ${t.threshold}★ in ${b.biome} to reach ${t.name}`;
+                }
                 tree.appendChild(gate);
             });
 
@@ -492,8 +901,8 @@
                 node.style.top = (y - NODE_R) + 'px';
                 node.style.setProperty('--biome-color', a.biome_color);
                 const known = state !== 'tierlocked';
-                node.title = `${a.name} — ${a.tier_name} (worth ★${a.star_value})\n`
-                    + `Unlock: ✦${a.skill_cost} skill pts   Buy: \u{1FA99}${a.cost_coins} coins`;
+                node.dataset.tip = `${a.name} — ${a.tier_name} (worth ★${a.star_value})<br>`
+                    + `Unlock: ✦${a.skill_cost} skill pts &nbsp; Buy: ${coinImg()}${a.cost_coins} coins`;
 
                 const img = document.createElement('img');
                 img.className = 'az-node-sprite';
@@ -515,7 +924,7 @@
                     cost.className = 'az-node-cost';
                     if (state === 'buyable' || state === 'buypoor') {
                         cost.classList.add('coin');
-                        cost.innerHTML = `\u{1FA99}${a.cost_coins}`;
+                        cost.innerHTML = coinImg() + a.cost_coins;
                     } else if (state === 'tierlocked') {
                         cost.classList.add('star');
                         cost.innerHTML = `★${a.tier_threshold}`;
@@ -630,12 +1039,12 @@
         chip.className = 'az-reward-chip';
         const color = (DATA.rarityColors || {})[reward.rarity] || '#9aa0a6';
         chip.style.setProperty('--rarity', color);
-        chip.textContent = rewardText(reward);
+        chip.innerHTML = rewardText(reward);
         return chip;
     }
 
     function rewardText(reward) {
-        if (reward.kind === 'coins') return `\u{1FA99} ${reward.amount}`;
+        if (reward.kind === 'coins') return `${coinImg()} ${reward.amount}`;
         if (reward.kind === 'skill') return `✦ ${reward.label}`;
         if (reward.kind === 'animal') return `\u{1F43E} ${reward.label}`;
         return reward.label || '';
@@ -643,10 +1052,12 @@
 
     function renderAll() {
         renderHeader();
-        renderGrid();
+        renderMap();
         renderTree();
         renderQuests();
         renderColorPickers();
+        renderReviewerToggles();
+        renderReviewerStyle();
     }
 
     // ---------- Bridge update handler ----------
@@ -693,6 +1104,9 @@
             document.querySelectorAll('.az-tab-panel').forEach((p) => p.classList.remove('active'));
             btn.classList.add('active');
             panel.classList.add('active');
+            // The stage has no width until the Zoo tab is visible, so fit the map
+            // the first time it's shown.
+            if (tabName === 'zoo' && !mapFitted) requestAnimationFrame(fitMap);
         }
 
         document.querySelectorAll('.az-tab-btn').forEach((btn) => {
@@ -702,6 +1116,11 @@
 
         document.getElementById('az-reset-btn').addEventListener('click', openResetConfirmModal);
         setupColorPickers();
+        setupTooltip();
+        setupReviewerToggles();
+        setupReviewerStyle();
+        setupMapControls();
+        window.addEventListener('resize', () => { if (mapFitted) { clampMap(); applyMapTransform(); } });
 
         setInterval(() => {
             blinkOn = !blinkOn;

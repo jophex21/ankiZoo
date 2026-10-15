@@ -14,9 +14,15 @@ ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 class ZooState:
     total_xp: int = 0
     coins: int = 0
-    owned_tiles: List[List[int]] = field(default_factory=lambda: [[5, 5]])  # center of the 11x11 grid
-    placed_animals: Dict[str, str] = field(default_factory=dict)  # "x,y" -> animal_id
-    tile_terrain: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # "x,y" -> {"biome", "ox", "oy"}
+    owned_tiles: List[List[int]] = field(default_factory=lambda: [[5, 5]])  # legacy 11x11 grid (pre-map redesign)
+    placed_animals: Dict[str, str] = field(default_factory=dict)  # legacy "x,y" -> animal_id
+    tile_terrain: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # legacy "x,y" -> {"biome", "ox", "oy"}
+    # Zoo-map model: the park is a set of square plots grouped into biome districts.
+    # A plot id is "<Biome>-<index>" (e.g. "Savanna-0"). Plots unlock left-to-right
+    # within a district (construction state); an owned animal is then placed into one.
+    unlocked_plots: List[str] = field(default_factory=list)   # plot ids the player has unlocked
+    plot_animals: Dict[str, str] = field(default_factory=dict)  # plot id -> animal_id
+    plots_init: bool = False  # one-time migration of legacy placements into plots
     # Two-step ownership: an animal is first *unlocked* in the skill tree (costs
     # skill points), then *bought* with coins to become placeable in the zoo.
     unlocked_animals: List[str] = field(default_factory=list)  # skill-tree unlocks
@@ -60,6 +66,38 @@ class ZooData:
         missing = [a for a in st.owned_animals if a not in st.unlocked_animals]
         if missing:
             st.unlocked_animals.extend(missing)
+            changed = True
+        # One-time: carry legacy grid placements into the biome-district plot model
+        # so an existing zoo isn't emptied by the map redesign.
+        if not st.plots_init:
+            from . import animals as animals_module
+            per_biome = {}
+            for animal_id in st.placed_animals.values():
+                try:
+                    biome = animals_module.get_animal(animal_id)["biome"]
+                except KeyError:
+                    continue
+                idx = per_biome.get(biome, 0)
+                per_biome[biome] = idx + 1
+                plot_id = f"{biome}-{idx}"
+                if plot_id not in st.unlocked_plots:
+                    st.unlocked_plots.append(plot_id)
+                st.plot_animals[plot_id] = animal_id
+            st.plots_init = True
+            changed = True
+        # Drop ids that no longer exist in the catalog (e.g. after a sprite/animal
+        # replacement) so they don't sit dead in these lists forever.
+        from . import animals as animals_module
+        valid_ids = {a["id"] for a in animals_module.get_catalog()}
+        for attr in ("unlocked_animals", "owned_animals", "pretree_animals"):
+            lst = getattr(st, attr)
+            filtered = [a for a in lst if a in valid_ids]
+            if filtered != lst:
+                setattr(st, attr, filtered)
+                changed = True
+        stale_plots = [p for p, a in st.plot_animals.items() if a not in valid_ids]
+        for plot_id in stale_plots:
+            st.plot_animals.pop(plot_id)
             changed = True
         if changed:
             self.save()

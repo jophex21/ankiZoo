@@ -34,6 +34,11 @@ def target_end_epoch() -> Optional[float]:
     return _runtime["start"] + _runtime["minutes"] * 60
 
 
+def duration_minutes() -> int:
+    """Length of the current run, or the configured default when idle."""
+    return int(_runtime["minutes"]) if is_running() else default_minutes()
+
+
 def default_minutes() -> int:
     return int(config.get_config().get("pomodoroMinutes", 25))
 

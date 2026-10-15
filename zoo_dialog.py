@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
 from typing import Any, Dict, Optional
 
 from aqt import mw
@@ -14,7 +13,8 @@ from . import config as config_module
 from . import leveling, lootbox, quests as quests_module, sprite_render, zoo_logic
 from .zoo_data import ADDON_DIR, get_zoo_data
 
-GRID_SIZE = 11  # odd so the starting tile can sit dead-center
+GRID_SIZE = 11  # legacy; kept for the retired buyTile/grid path
+BUILDING_SLOTS = 20  # square building plots reserved in the central Plaza (art pending)
 
 # The rank badge art is one sprite sheet: a 10x5 grid of 50 shield badges read
 # left-to-right, top-to-bottom, so cell index N corresponds to level N+1. The
@@ -22,6 +22,17 @@ GRID_SIZE = 11  # odd so the starting tile can sit dead-center
 RANK_BADGE_PATH = os.path.join(ADDON_DIR, "sprites", "rank_upgrade_sprite_sheet.png")
 RANK_BADGE_COLS = 10
 RANK_BADGE_ROWS = 5
+
+COIN_ICON_PATH = os.path.join(ADDON_DIR, "sprites", "assets", "coin.png")
+_coin_uri_cache: Optional[str] = None
+
+
+def _coin_data_uri() -> Optional[str]:
+    """The coin sprite, downscaled once and cached (the source is multi-MB)."""
+    global _coin_uri_cache
+    if _coin_uri_cache is None and os.path.isfile(COIN_ICON_PATH):
+        _coin_uri_cache = sprite_render.scaled_png_data_uri(COIN_ICON_PATH, 64)
+    return _coin_uri_cache
 
 
 def _build_payload() -> Dict[str, Any]:
@@ -34,19 +45,21 @@ def _build_payload() -> Dict[str, Any]:
     # on the first answered card).
     quests_module.ensure_daily_quests_and_save(data, level)
 
-    biomes_in_use = {t["biome"] for t in state.tile_terrain.values()}
+    # Terrain is only shipped for districts that actually have a filled plot
+    # (some terrain PNGs are large); the district biome is the plot-id prefix.
+    biomes_in_use = {plot_id.rsplit("-", 1)[0] for plot_id in state.plot_animals}
     terrain_images = {}
     for biome in biomes_in_use:
         uri = animals_module.get_terrain_data_uri(biome)
         if uri:
-            w, h = animals_module.get_terrain_size(biome)
-            terrain_images[biome] = {"uri": uri, "w": w, "h": h}
+            terrain_images[biome] = {"uri": uri}
 
     rank_badge_uri = (
         sprite_render.file_data_uri(RANK_BADGE_PATH)
         if os.path.isfile(RANK_BADGE_PATH)
         else None
     )
+    coin_uri = _coin_data_uri()
 
     conf = config_module.get_config()
     widget_colors = {
@@ -55,12 +68,11 @@ def _build_payload() -> Dict[str, Any]:
     }
 
     return {
-        "gridSize": GRID_SIZE,
-        "ownedTiles": state.owned_tiles,
-        "placedAnimals": state.placed_animals,
-        "tileTerrain": state.tile_terrain,
+        "unlockedPlots": state.unlocked_plots,
+        "plotAnimals": state.plot_animals,
+        "nextPlotCost": zoo_logic.tile_cost(len(state.unlocked_plots)),
+        "buildingSlots": BUILDING_SLOTS,
         "terrainImages": terrain_images,
-        "fenceUri": sprite_render.FENCE_DATA_URI,
         "unlockedAnimals": state.unlocked_animals,
         "ownedAnimals": state.owned_animals,
         "coins": state.coins,
@@ -73,16 +85,39 @@ def _build_payload() -> Dict[str, Any]:
         "xpIntoLevel": progress.xp_into,
         "xpToNextLevel": progress.xp_next,
         "rank": progress.rank,
-        "nextTileCost": zoo_logic.tile_cost(len(state.owned_tiles)),
         "catalog": animals_module.get_catalog(),
         "quests": state.quests,
         "rarityColors": lootbox.RARITY_COLORS,
         "rarityLabels": lootbox.RARITY_LABEL,
         "widgetColors": widget_colors,
+        "pomodoroMinutes": conf.get("pomodoroMinutes", config_module.DEFAULTS["pomodoroMinutes"]),
+        "reviewerStyle": {
+            "schema": [
+                {"key": k, "group": g, "kind": kind, "label": label, "extra": extra}
+                for k, g, kind, _, label, extra in config_module.REVIEWER_STYLE
+            ],
+            "values": config_module.style_values(conf),
+            "presets": sorted((conf.get("reviewerStylePresets") or {}).keys(), key=str.lower),
+        },
+        "reviewerToggles": {k: bool(conf.get(v, True)) for k, v in config_module.REVIEWER_TOGGLE_KEYS.items()},
         "rankBadgeUri": rank_badge_uri,
         "rankBadgeCols": RANK_BADGE_COLS,
         "rankBadgeRows": RANK_BADGE_ROWS,
+        "coinUri": coin_uri,
     }
+
+
+def _qcolor_from_hex(value: str) -> QColor:
+    """#RRGGBB[AA] -> QColor (Qt reads 8-digit hex as #AARRGGBB, so reorder)."""
+    if len(value) == 9:
+        value = "#" + value[7:9] + value[1:7]
+    return QColor(value) if value else QColor("#ffffff")
+
+
+def _hex_from_qcolor(color: QColor) -> str:
+    """QColor -> CSS #RRGGBB, or #RRGGBBAA when not fully opaque."""
+    rgb = color.name()
+    return rgb if color.alpha() == 255 else f"{rgb}{color.alpha():02x}"
 
 
 class ZooDialog(QDialog):
@@ -114,7 +149,8 @@ class ZooDialog(QDialog):
         # and reviewer widgets.
         css_content = self._read_web_asset("zoo.css")
         js_content = self._read_web_asset("zoo.js")
-        head_html = data_script + f"<style>{css_content}</style>"
+        zoo_vars = config_module.style_vars_css(config_module.get_config(), ("zoo",))
+        head_html = data_script + f"<style>{css_content}</style><style>{zoo_vars}</style>"
 
         body_html = self._read_web_asset("zoo.html") + f"<script>{js_content}</script>"
 
@@ -125,6 +161,29 @@ class ZooDialog(QDialog):
         path = os.path.join(ADDON_DIR, "web", filename)
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+
+    @staticmethod
+    def _biome_animal_count(biome: str) -> int:
+        return sum(1 for a in animals_module.get_catalog() if a["biome"] == biome)
+
+    def _validate_frontier_plot(self, plot_id: str, state) -> tuple:
+        """A plot is unlockable only if it's the next unopened plot in its district
+        (districts fill left-to-right, so index N needs the N plots before it open)."""
+        try:
+            biome, idx_str = plot_id.rsplit("-", 1)
+            idx = int(idx_str)
+        except Exception:
+            return False, "Invalid plot."
+        if biome not in animals_module.BIOME_ORDER:
+            return False, "Invalid plot."
+        if idx < 0 or idx >= self._biome_animal_count(biome):
+            return False, "Invalid plot."
+        if plot_id in state.unlocked_plots:
+            return False, "Plot already cleared."
+        unlocked_in_biome = sum(1 for p in state.unlocked_plots if p.rsplit("-", 1)[0] == biome)
+        if idx != unlocked_in_biome:
+            return False, "Clear the earlier plots in this area first."
+        return True, ""
 
     def _push_update(self, success: bool, message: str = "", loot: Optional[Dict[str, Any]] = None) -> None:
         result = {"success": success, "message": message, "payload": _build_payload(), "loot": loot}
@@ -140,28 +199,20 @@ class ZooDialog(QDialog):
         data = get_zoo_data()
         state = data.state
 
-        if cmd.startswith("buyTile:"):
-            try:
-                x_str, y_str = cmd.split(":", 1)[1].split(",")
-                tile = (int(x_str), int(y_str))
-            except Exception:
-                self._push_update(False, "Invalid tile.")
-                return None
-
-            ok, msg = zoo_logic.can_buy_tile(tile, state.owned_tiles, GRID_SIZE)
+        if cmd.startswith("unlockPlot:"):
+            plot_id = cmd.split(":", 1)[1]
+            ok, msg = self._validate_frontier_plot(plot_id, state)
             if not ok:
                 self._push_update(False, msg)
                 return None
-
-            cost = zoo_logic.tile_cost(len(state.owned_tiles))
+            cost = zoo_logic.tile_cost(len(state.unlocked_plots))
             if state.coins < cost:
                 self._push_update(False, "Not enough coins.")
                 return None
-
             state.coins -= cost
-            state.owned_tiles.append([tile[0], tile[1]])
+            state.unlocked_plots.append(plot_id)
             data.save()
-            self._push_update(True, "Tile purchased!")
+            self._push_update(True, "Plot cleared -- place an animal here.")
             return None
 
         if cmd.startswith("unlockAnimal:"):
@@ -176,14 +227,20 @@ class ZooDialog(QDialog):
                 self._push_update(False, "Already unlocked.")
                 return None
 
-            if not animals_module.tier_accessible(animal, state.unlocked_animals):
-                self._push_update(
-                    False,
-                    f"Earn {animal['tier_threshold']}★ in {animal['biome']} to unlock {animal['tier_name']} animals.",
-                )
+            level = leveling.get_progress(state.total_xp).level
+            if not animals_module.tier_accessible(animal, state.unlocked_animals, level):
+                if animal["conservation"] == "EX" and level < animal["min_level"]:
+                    self._push_update(
+                        False,
+                        f"Reach level {animal['min_level']} to unlock Extinct animals in {animal['biome']}.",
+                    )
+                else:
+                    self._push_update(
+                        False,
+                        f"Earn {animal['tier_threshold']}★ in {animal['biome']} to unlock {animal['tier_name']} animals.",
+                    )
                 return None
 
-            level = leveling.get_progress(state.total_xp).level
             available = animals_module.available_points(level, state.unlocked_animals, state.pretree_animals, state.bonus_skill_points)
             if available < animal["skill_cost"]:
                 self._push_update(False, "Not enough skill points.")
@@ -222,49 +279,32 @@ class ZooDialog(QDialog):
 
         if cmd.startswith("placeAnimal:"):
             try:
-                rest = cmd.split(":", 1)[1]
-                coords, animal_id = rest.split("|")
-                x_str, y_str = coords.split(",")
-                tile_key = f"{int(x_str)},{int(y_str)}"
+                plot_id, animal_id = cmd.split(":", 1)[1].split("|")
             except Exception:
                 self._push_update(False, "Invalid placement.")
                 return None
 
-            owned_set = {(t[0], t[1]) for t in state.owned_tiles}
-            if (int(x_str), int(y_str)) not in owned_set:
-                self._push_update(False, "Tile not owned.")
+            if plot_id not in state.unlocked_plots:
+                self._push_update(False, "Clear this plot first.")
                 return None
             if animal_id not in state.owned_animals:
                 self._push_update(False, "Animal not owned.")
                 return None
-            if tile_key in state.placed_animals:
-                self._push_update(False, "Tile already occupied.")
+            if plot_id in state.plot_animals:
+                self._push_update(False, "Plot already occupied.")
                 return None
-            if animal_id in state.placed_animals.values():
+            if animal_id in state.plot_animals.values():
                 self._push_update(False, "Animal already placed elsewhere.")
                 return None
 
-            state.placed_animals[tile_key] = animal_id
-            biome = animals_module.get_animal(animal_id)["biome"]
-            w, h = animals_module.get_terrain_size(biome)
-            state.tile_terrain[tile_key] = {
-                "biome": biome,
-                "ox": random.randint(0, max(0, w - 32)),
-                "oy": random.randint(0, max(0, h - 32)),
-            }
+            state.plot_animals[plot_id] = animal_id
             data.save()
             self._push_update(True)
             return None
 
         if cmd.startswith("removeAnimal:"):
-            coords = cmd.split(":", 1)[1]
-            try:
-                x_str, y_str = coords.split(",")
-                tile_key = f"{int(x_str)},{int(y_str)}"
-            except Exception:
-                self._push_update(False, "Invalid tile.")
-                return None
-            state.placed_animals.pop(tile_key, None)
+            plot_id = cmd.split(":", 1)[1]
+            state.plot_animals.pop(plot_id, None)
             data.save()
             self._push_update(True)
             return None
@@ -315,6 +355,39 @@ class ZooDialog(QDialog):
                 self._push_update(True)
             return None
 
+        if cmd.startswith("setReviewerToggle:"):
+            try:
+                _, short_key, value = cmd.split(":", 2)
+            except ValueError:
+                return None
+            conf_key = config_module.REVIEWER_TOGGLE_KEYS.get(short_key)
+            if conf_key:
+                conf = config_module.get_config()
+                conf[conf_key] = value == "1"
+                config_module.write_config(conf)
+                from . import reviewer_widget
+                reviewer_widget.apply_visibility()
+                self._push_update(True)
+            return None
+
+        if cmd.startswith("setPomodoroMinutes:"):
+            lo, hi = config_module.POMODORO_MINUTES_RANGE
+            try:
+                minutes = max(lo, min(hi, int(cmd.split(":", 1)[1])))
+            except ValueError:
+                return None
+            conf = config_module.get_config()
+            conf["pomodoroMinutes"] = minutes
+            config_module.write_config(conf)
+            from . import reviewer_widget
+            reviewer_widget._reload_reviewer_widget()
+            self._push_update(True)
+            return None
+
+        if cmd.startswith("reviewerStyle:"):
+            self._on_reviewer_style(cmd.split(":", 1)[1])
+            return None
+
         if cmd.startswith("pickWidgetColor:"):
             short_key = cmd.split(":", 1)[1]
             conf_key = config_module.WIDGET_COLOR_KEYS.get(short_key)
@@ -334,6 +407,69 @@ class ZooDialog(QDialog):
             return None
 
         return None
+
+    def _on_reviewer_style(self, raw: str) -> None:
+        """Settings-tab appearance actions: set / pick / reset / presets."""
+        try:
+            req = json.loads(raw)
+            action = req["action"]
+        except (ValueError, KeyError, TypeError):
+            return
+        conf = config_module.get_config()
+        presets = dict(conf.get("reviewerStylePresets") or {})
+        message = ""
+
+        if action == "set":
+            value = config_module.validate_style_value(req.get("key"), req.get("value"))
+            if value is None:
+                self._push_update(False, "Invalid value.")
+                return
+            conf[req["key"]] = value
+        elif action == "pick":
+            key = req.get("key")
+            if config_module.REVIEWER_STYLE_BY_KEY.get(key, (None, None, None))[2] != "color":
+                return
+            current = config_module.style_values(conf)[key]
+            color = QColorDialog.getColor(
+                _qcolor_from_hex(current), self, "Choose a color",
+                QColorDialog.ColorDialogOption.ShowAlphaChannel,
+            )
+            if not color.isValid():
+                return
+            conf[key] = _hex_from_qcolor(color)
+        elif action == "reset":
+            for key, _, _, default, _, _ in config_module.REVIEWER_STYLE:
+                conf[key] = default
+            message = "Appearance reset to defaults."
+        elif action == "savePreset":
+            name = str(req.get("name", "")).strip()[:40]
+            if not name:
+                self._push_update(False, "Give the preset a name first.")
+                return
+            presets[name] = config_module.style_values(conf)
+            conf["reviewerStylePresets"] = presets
+            message = f"Saved preset \u201c{name}\u201d."
+        elif action == "loadPreset":
+            preset = presets.get(req.get("name"))
+            if not isinstance(preset, dict):
+                return
+            for key, value in preset.items():
+                value = config_module.validate_style_value(key, value)
+                if value is not None:
+                    conf[key] = value
+            message = f"Loaded preset \u201c{req['name']}\u201d."
+        elif action == "deletePreset":
+            if presets.pop(req.get("name"), None) is None:
+                return
+            conf["reviewerStylePresets"] = presets
+            message = f"Deleted preset \u201c{req['name']}\u201d."
+        else:
+            return
+
+        config_module.write_config(conf)
+        from . import reviewer_widget
+        reviewer_widget.apply_style()
+        self._push_update(True, message)
 
     def _refresh_home_widget(self) -> None:
         from . import deck_browser_widget

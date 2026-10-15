@@ -27,10 +27,16 @@ def _find_sprite_file(animal_id: str, suffix: str) -> Optional[str]:
 # animal is placed on a tile (see zoo_dialog.py's placeAnimal handler).
 TERRAIN_DIR = os.path.join(os.path.dirname(__file__), "terrain")
 
+# Biome names that aren't safe/available as a terrain filename stem map to the
+# terrain file they should reuse instead (e.g. a merged biome reusing one of
+# its former halves' art).
+TERRAIN_SLUG: Dict[str, str] = {"Desert & Outback": "desert"}
+
 
 def _find_terrain_file(biome: str) -> Optional[str]:
+    stem = TERRAIN_SLUG.get(biome, biome.lower())
     for ext in _SPRITE_EXTS:
-        path = os.path.join(TERRAIN_DIR, f"{biome.lower()}{ext}")
+        path = os.path.join(TERRAIN_DIR, f"{stem}{ext}")
         if os.path.isfile(path):
             return path
     return None
@@ -62,108 +68,156 @@ BIOME_COLORS: Dict[str, str] = {
     "Ocean": "#3f78c9",    # deep blue
     "Jungle": "#37b24d",   # vivid green
     "Forest": "#2f7d4f",   # pine green
-    "Desert": "#e07a2e",   # burnt orange
-    "Outback": "#c0492e",  # red clay
+    "Desert & Outback": "#e07a2e",  # burnt orange
 }
 
 # The order biome branches fan out in the tree (root at the bottom-center).
 BIOME_ORDER: List[str] = [
-    "Savanna", "Arctic", "Ocean", "Jungle", "Forest", "Desert", "Outback",
+    "Savanna", "Arctic", "Ocean", "Jungle", "Forest", "Desert & Outback",
 ]
 
-# IUCN Red List tiers, ordered least -> most at risk. Each biome tree is a spine of
-# the tiers it contains; unlocking an animal earns that biome "stars" (rarer = more),
-# and accumulated stars gate access to the biome's higher tiers.
-TIER_ORDER: List[str] = ["LC", "NT", "VU", "EN", "CR"]
+# IUCN Red List tiers, ordered least -> most at risk, plus a synthetic "EX"
+# (Extinct) tier above CR for prehistoric/extinct animals. Each biome tree is a
+# spine of the tiers it contains; unlocking an animal earns that biome "stars"
+# (rarer = more), and accumulated stars gate access to the biome's higher tiers.
+# EX additionally requires a minimum player level (see EX_MIN_LEVEL) on top of
+# the usual star gate, since it's meant to be a deliberate late-game milestone.
+TIER_ORDER: List[str] = ["LC", "NT", "VU", "EN", "CR", "EX"]
 _CONSERVATION_RANK: Dict[str, int] = {t: i for i, t in enumerate(TIER_ORDER)}
 TIER_NAME: Dict[str, str] = {
     "LC": "Least Concern", "NT": "Near Threatened", "VU": "Vulnerable",
-    "EN": "Endangered", "CR": "Critically Endangered",
+    "EN": "Endangered", "CR": "Critically Endangered", "EX": "Extinct",
 }
 _RARITY_FOR_TIER: Dict[str, str] = {
     "LC": "common", "NT": "uncommon", "VU": "rare", "EN": "epic", "CR": "legendary",
+    "EX": "mythic",
 }
 # Stars an unlocked animal contributes to its biome (rarer tiers are worth more and
 # count more toward reaching the next tier). Skill-point/coin unlock prices also
 # scale with tier. All three tables are tunable balance knobs.
-STAR_VALUE: Dict[str, int] = {"LC": 1, "NT": 3, "VU": 5, "EN": 8, "CR": 12}
-SKILL_COST: Dict[str, int] = {"LC": 1, "NT": 2, "VU": 3, "EN": 4, "CR": 5}
-COIN_COST: Dict[str, int] = {"LC": 30, "NT": 70, "VU": 120, "EN": 180, "CR": 260}
+STAR_VALUE: Dict[str, int] = {"LC": 1, "NT": 3, "VU": 5, "EN": 8, "CR": 12, "EX": 18}
+SKILL_COST: Dict[str, int] = {"LC": 1, "NT": 2, "VU": 3, "EN": 4, "CR": 5, "EX": 7}
+COIN_COST: Dict[str, int] = {"LC": 30, "NT": 70, "VU": 120, "EN": 180, "CR": 260, "EX": 360}
 # A tier unlocks once you hold ~GATE_FRACTION of all stars available in the tiers
 # below it within that biome. <1 means you never need to unlock everything below.
 GATE_FRACTION = 0.6
 
-# (id, name, biome, conservation, template, pattern, palette[body, shade, accent, eye])
+# EX tier also requires the player to have reached this level in the biome,
+# on top of the usual star threshold. Spread across the 40-50 late-game window.
+EX_MIN_LEVEL: Dict[str, int] = {
+    "Ocean": 40, "Arctic": 42, "Savanna": 44, "Forest": 46,
+    "Desert & Outback": 48, "Jungle": 50,
+}
+
+# (id, name, biome, conservation). Every animal here has hand-authored art in
+# sprites/<id>_idle.png (see _find_sprite_file), so no template/pattern/palette
+# is needed -- _build_catalog only falls back to procedural art when a hand
+# file is missing.
 _RAW_ANIMALS: List[Dict[str, Any]] = [
     # Savanna
-    {"id": "lion", "name": "Lion", "biome": "Savanna", "conservation": "VU", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#d9a441", "S": "#b8822c", "A": "#7a4a1e", "E": "#2b1a0e"}},
-    {"id": "elephant", "name": "Elephant", "biome": "Savanna", "conservation": "EN", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#9ea6ab", "S": "#7c8388", "A": "#5f6569", "E": "#1c1c1c"}},
-    {"id": "giraffe", "name": "Giraffe", "biome": "Savanna", "conservation": "LC", "template": "mammal", "pattern": "spots",
-     "palette": {"B": "#eecb7a", "S": "#d9b25f", "A": "#8a5a2b", "E": "#2b1a0e"}},
-    {"id": "zebra", "name": "Zebra", "biome": "Savanna", "conservation": "LC", "template": "mammal", "pattern": "stripes",
-     "palette": {"B": "#f2f2f2", "S": "#d8d8d8", "A": "#232323", "E": "#111111"}},
-    {"id": "rhino", "name": "Rhino", "biome": "Savanna", "conservation": "CR", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#8f9a8a", "S": "#727d6e", "A": "#565f53", "E": "#161616"}},
+    {"id": "hyena", "name": "Hyena", "biome": "Savanna", "conservation": "LC"},
+    {"id": "bison", "name": "Bison", "biome": "Savanna", "conservation": "NT"},
+    {"id": "zebra", "name": "Zebra", "biome": "Savanna", "conservation": "NT"},
+    {"id": "cheetah", "name": "Cheetah", "biome": "Savanna", "conservation": "VU"},
+    {"id": "giraffe", "name": "Giraffe", "biome": "Savanna", "conservation": "VU"},
+    {"id": "lion", "name": "Lion", "biome": "Savanna", "conservation": "VU"},
+    {"id": "elephant", "name": "Elephant", "biome": "Savanna", "conservation": "EN"},
+    {"id": "eastern_bongo", "name": "Eastern Bongo", "biome": "Savanna", "conservation": "CR"},
+    {"id": "rhino", "name": "Rhino", "biome": "Savanna", "conservation": "CR"},
+    {"id": "brachiosaurus", "name": "Brachiosaurus", "biome": "Savanna", "conservation": "EX"},
+    {"id": "triceratops", "name": "Triceratops", "biome": "Savanna", "conservation": "EX"},
+    {"id": "trex", "name": "Tyrannosaurus Rex", "biome": "Savanna", "conservation": "EX"},
     # Arctic
-    {"id": "polar_bear", "name": "Polar Bear", "biome": "Arctic", "conservation": "EN", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#f2f6f8", "S": "#d6e2e6", "A": "#aebcc0", "E": "#1a1a1a"}},
-    {"id": "penguin", "name": "Penguin", "biome": "Arctic", "conservation": "NT", "template": "bird", "pattern": "mask",
-     "palette": {"B": "#f5f5f5", "S": "#dedede", "A": "#1c1c1c", "E": "#111111"}},
-    {"id": "arctic_fox", "name": "Arctic Fox", "biome": "Arctic", "conservation": "LC", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#eef2f4", "S": "#cfd9dc", "A": "#a9b6ba", "E": "#1a1a1a"}},
-    {"id": "seal", "name": "Seal", "biome": "Arctic", "conservation": "LC", "template": "marine", "pattern": "spots",
-     "palette": {"B": "#8e9aa3", "S": "#6f7a82", "A": "#4c545a", "E": "#111111"}},
-    {"id": "walrus", "name": "Walrus", "biome": "Arctic", "conservation": "VU", "template": "marine", "pattern": "none",
-     "palette": {"B": "#c9a267", "S": "#a9824c", "A": "#7a5a30", "E": "#1a1a1a"}},
+    {"id": "arctic_fox", "name": "Arctic Fox", "biome": "Arctic", "conservation": "LC"},
+    {"id": "seal", "name": "Seal", "biome": "Arctic", "conservation": "LC"},
+    {"id": "beluga_whale", "name": "Beluga Whale", "biome": "Arctic", "conservation": "LC"},
+    {"id": "magellanic_penguin", "name": "Magellanic Penguin", "biome": "Arctic", "conservation": "NT"},
+    {"id": "emperor_penguin", "name": "Emperor Penguin", "biome": "Arctic", "conservation": "NT"},
+    {"id": "narwhal", "name": "Narwhal", "biome": "Arctic", "conservation": "NT"},
+    {"id": "walrus", "name": "Walrus", "biome": "Arctic", "conservation": "VU"},
+    {"id": "polar_bear", "name": "Polar Bear", "biome": "Arctic", "conservation": "EN"},
+    {"id": "mammoth", "name": "Woolly Mammoth", "biome": "Arctic", "conservation": "EX"},
+    {"id": "smilodon", "name": "Smilodon", "biome": "Arctic", "conservation": "EX"},
+    {"id": "direwolf", "name": "Dire Wolf", "biome": "Arctic", "conservation": "EX"},
     # Ocean
-    {"id": "dolphin", "name": "Dolphin", "biome": "Ocean", "conservation": "LC", "template": "marine", "pattern": "none",
-     "palette": {"B": "#7fa8c9", "S": "#5f88ab", "A": "#3f688b", "E": "#0f1f2b"}},
-    {"id": "sea_turtle", "name": "Sea Turtle", "biome": "Ocean", "conservation": "EN", "template": "marine", "pattern": "mask",
-     "palette": {"B": "#6fa66a", "S": "#528049", "A": "#345c2d", "E": "#111111"}},
-    {"id": "orca", "name": "Orca", "biome": "Ocean", "conservation": "CR", "template": "marine", "pattern": "mask",
-     "palette": {"B": "#2b2f36", "S": "#1c1f24", "A": "#f2f2f2", "E": "#f2f2f2"}},
-    {"id": "shark", "name": "Shark", "biome": "Ocean", "conservation": "VU", "template": "marine", "pattern": "none",
-     "palette": {"B": "#8b98a3", "S": "#6c7982", "A": "#4c565d", "E": "#111111"}},
-    {"id": "octopus", "name": "Octopus", "biome": "Ocean", "conservation": "LC", "template": "marine", "pattern": "spots",
-     "palette": {"B": "#b56aa8", "S": "#914f86", "A": "#6b3564", "E": "#1a0a18"}},
+    {"id": "alligator", "name": "Alligator", "biome": "Ocean", "conservation": "LC"},
+    {"id": "clownfish", "name": "Clownfish", "biome": "Ocean", "conservation": "LC"},
+    {"id": "dolphin", "name": "Dolphin", "biome": "Ocean", "conservation": "LC"},
+    {"id": "octopus", "name": "Octopus", "biome": "Ocean", "conservation": "LC"},
+    {"id": "marlin", "name": "Marlin", "biome": "Ocean", "conservation": "NT"},
+    {"id": "platypus", "name": "Platypus", "biome": "Ocean", "conservation": "NT"},
+    {"id": "crocodile", "name": "Crocodile", "biome": "Ocean", "conservation": "VU"},
+    {"id": "galapagos_tortoise", "name": "Galapagos Tortoise", "biome": "Ocean", "conservation": "VU"},
+    {"id": "great_white_shark", "name": "Great White Shark", "biome": "Ocean", "conservation": "VU"},
+    {"id": "manatee", "name": "Manatee", "biome": "Ocean", "conservation": "VU"},
+    {"id": "marine_iguana", "name": "Marine Iguana", "biome": "Ocean", "conservation": "VU"},
+    {"id": "mola_mola", "name": "Mola Mola", "biome": "Ocean", "conservation": "VU"},
+    {"id": "giant_river_otter", "name": "Giant River Otter", "biome": "Ocean", "conservation": "EN"},
+    {"id": "manta_ray", "name": "Manta Ray", "biome": "Ocean", "conservation": "EN"},
+    {"id": "orca", "name": "Orca", "biome": "Ocean", "conservation": "EN"},
+    {"id": "sea_turtle", "name": "Sea Turtle", "biome": "Ocean", "conservation": "EN"},
+    {"id": "hammerhead_shark", "name": "Hammerhead Shark", "biome": "Ocean", "conservation": "CR"},
+    {"id": "megalodon", "name": "Megalodon", "biome": "Ocean", "conservation": "EX"},
+    {"id": "mosasaurus", "name": "Mosasaurus", "biome": "Ocean", "conservation": "EX"},
+    {"id": "spinosaurus", "name": "Spinosaurus", "biome": "Ocean", "conservation": "EX"},
     # Jungle
-    {"id": "tiger", "name": "Tiger", "biome": "Jungle", "conservation": "EN", "template": "mammal", "pattern": "stripes",
-     "palette": {"B": "#e08a2e", "S": "#c06f1c", "A": "#221510", "E": "#111111"}},
-    {"id": "gorilla", "name": "Gorilla", "biome": "Jungle", "conservation": "CR", "template": "biped", "pattern": "none",
-     "palette": {"B": "#3c3630", "S": "#2a2521", "A": "#1c1815", "E": "#0c0c0c"}},
-    {"id": "chimpanzee", "name": "Chimpanzee", "biome": "Jungle", "conservation": "EN", "template": "biped", "pattern": "mask",
-     "palette": {"B": "#7a5335", "S": "#5e3f27", "A": "#e7c9a3", "E": "#1a1006"}},
-    {"id": "toucan", "name": "Toucan", "biome": "Jungle", "conservation": "LC", "template": "bird", "pattern": "mask",
-     "palette": {"B": "#22201f", "S": "#141312", "A": "#f0a13a", "E": "#f2f2f2"}},
-    {"id": "red_panda", "name": "Red Panda", "biome": "Jungle", "conservation": "NT", "template": "mammal", "pattern": "mask",
-     "palette": {"B": "#b8562f", "S": "#943f1f", "A": "#f2ede0", "E": "#1a0e08"}},
+    {"id": "macaw", "name": "Scarlet Macaw", "biome": "Jungle", "conservation": "LC"},
+    {"id": "ocelot", "name": "Ocelot", "biome": "Jungle", "conservation": "LC"},
+    {"id": "sloth", "name": "Sloth", "biome": "Jungle", "conservation": "LC"},
+    {"id": "toucan", "name": "Toucan", "biome": "Jungle", "conservation": "LC"},
+    {"id": "anteater", "name": "Anteater", "biome": "Jungle", "conservation": "VU"},
+    {"id": "binturong", "name": "Binturong", "biome": "Jungle", "conservation": "VU"},
+    {"id": "fossa", "name": "Fossa", "biome": "Jungle", "conservation": "VU"},
+    {"id": "giant_panda", "name": "Giant Panda", "biome": "Jungle", "conservation": "VU"},
+    {"id": "hyacinth_macaw", "name": "Hyacinth Macaw", "biome": "Jungle", "conservation": "VU"},
+    {"id": "king_cobra", "name": "King Cobra", "biome": "Jungle", "conservation": "VU"},
+    {"id": "mandrill", "name": "Mandrill", "biome": "Jungle", "conservation": "VU"},
+    {"id": "chimpanzee", "name": "Chimpanzee", "biome": "Jungle", "conservation": "EN"},
+    {"id": "komodo_dragon", "name": "Komodo Dragon", "biome": "Jungle", "conservation": "EN"},
+    {"id": "okapi", "name": "Okapi", "biome": "Jungle", "conservation": "EN"},
+    {"id": "red_panda", "name": "Red Panda", "biome": "Jungle", "conservation": "EN"},
+    {"id": "ring_tailed_lemur", "name": "Ring-Tailed Lemur", "biome": "Jungle", "conservation": "EN"},
+    {"id": "siberian_tiger", "name": "Siberian Tiger", "biome": "Jungle", "conservation": "EN"},
+    {"id": "spider_monkey", "name": "Spider Monkey", "biome": "Jungle", "conservation": "EN"},
+    {"id": "tapir", "name": "Tapir", "biome": "Jungle", "conservation": "EN"},
+    {"id": "gorilla", "name": "Gorilla", "biome": "Jungle", "conservation": "CR"},
+    {"id": "orangutan", "name": "Orangutan", "biome": "Jungle", "conservation": "CR"},
+    {"id": "pangolin", "name": "Pangolin", "biome": "Jungle", "conservation": "CR"},
+    {"id": "dodo", "name": "Dodo", "biome": "Jungle", "conservation": "EX"},
+    {"id": "parasaurolophus", "name": "Parasaurolophus", "biome": "Jungle", "conservation": "EX"},
     # Forest
-    {"id": "brown_bear", "name": "Brown Bear", "biome": "Forest", "conservation": "VU", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#7a5738", "S": "#5e4128", "A": "#432e1b", "E": "#161010"}},
-    {"id": "wolf", "name": "Wolf", "biome": "Forest", "conservation": "NT", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#8d8f94", "S": "#6d6f74", "A": "#4c4e52", "E": "#e8b93a"}},
-    {"id": "fox", "name": "Fox", "biome": "Forest", "conservation": "LC", "template": "mammal", "pattern": "mask",
-     "palette": {"B": "#d9702e", "S": "#b8571e", "A": "#f2ede0", "E": "#1a0e08"}},
-    {"id": "owl", "name": "Owl", "biome": "Forest", "conservation": "LC", "template": "bird", "pattern": "spots",
-     "palette": {"B": "#8a6d4c", "S": "#6d5439", "A": "#3f3122", "E": "#f2c94c"}},
-    {"id": "deer", "name": "Deer", "biome": "Forest", "conservation": "LC", "template": "mammal", "pattern": "spots",
-     "palette": {"B": "#c08a55", "S": "#9c6d3f", "A": "#f2ede0", "E": "#1a1008"}},
-    # Desert / Outback
-    {"id": "camel", "name": "Camel", "biome": "Desert", "conservation": "EN", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#d9b877", "S": "#bd9a5a", "A": "#8f6f3f", "E": "#1a1208"}},
-    {"id": "kangaroo", "name": "Kangaroo", "biome": "Outback", "conservation": "LC", "template": "biped", "pattern": "none",
-     "palette": {"B": "#a9825c", "S": "#8a6746", "A": "#5f4530", "E": "#111111"}},
-    {"id": "meerkat", "name": "Meerkat", "biome": "Desert", "conservation": "LC", "template": "biped", "pattern": "mask",
-     "palette": {"B": "#c9a877", "S": "#a98a5e", "A": "#4c3b28", "E": "#111111"}},
-    {"id": "koala", "name": "Koala", "biome": "Outback", "conservation": "EN", "template": "mammal", "pattern": "none",
-     "palette": {"B": "#a8a9a3", "S": "#87887f", "A": "#5f6058", "E": "#111111"}},
-    {"id": "ostrich", "name": "Ostrich", "biome": "Desert", "conservation": "LC", "template": "bird", "pattern": "none",
-     "palette": {"B": "#2b2825", "S": "#1a1816", "A": "#e8b93a", "E": "#111111"}},
+    {"id": "capybara", "name": "Capybara", "biome": "Forest", "conservation": "LC"},
+    {"id": "bald_eagle", "name": "Bald Eagle", "biome": "Forest", "conservation": "LC"},
+    {"id": "beaver", "name": "Beaver", "biome": "Forest", "conservation": "LC"},
+    {"id": "black_bear", "name": "Black Bear", "biome": "Forest", "conservation": "LC"},
+    {"id": "deer", "name": "Deer", "biome": "Forest", "conservation": "LC"},
+    {"id": "fox", "name": "Fox", "biome": "Forest", "conservation": "LC"},
+    {"id": "owl", "name": "Owl", "biome": "Forest", "conservation": "LC"},
+    {"id": "porcupine", "name": "Porcupine", "biome": "Forest", "conservation": "LC"},
+    {"id": "goliath_beetle", "name": "Goliath Beetle", "biome": "Forest", "conservation": "LC"},
+    {"id": "forest_wolf", "name": "Wolf", "biome": "Forest", "conservation": "NT"},
+    {"id": "vulture", "name": "Vulture", "biome": "Forest", "conservation": "NT"},
+    {"id": "brown_bear", "name": "Brown Bear", "biome": "Forest", "conservation": "VU"},
+    {"id": "shoebill", "name": "Shoebill", "biome": "Forest", "conservation": "VU"},
+    {"id": "snow_leopard", "name": "Snow Leopard", "biome": "Forest", "conservation": "VU"},
+    {"id": "urial", "name": "Urial", "biome": "Forest", "conservation": "VU"},
+    {"id": "monarch_butterfly", "name": "Monarch Butterfly", "biome": "Forest", "conservation": "EN"},
+    {"id": "black_footed_ferret", "name": "Black-Footed Ferret", "biome": "Forest", "conservation": "EN"},
+    {"id": "stegosaurus", "name": "Stegosaurus", "biome": "Forest", "conservation": "EX"},
+    {"id": "ankylosaurus", "name": "Ankylosaurus", "biome": "Forest", "conservation": "EX"},
+    {"id": "pachycephalosaurus", "name": "Pachycephalosaurus", "biome": "Forest", "conservation": "EX"},
+    # Desert & Outback
+    {"id": "meerkat", "name": "Meerkat", "biome": "Desert & Outback", "conservation": "LC"},
+    {"id": "ostrich", "name": "Ostrich", "biome": "Desert & Outback", "conservation": "LC"},
+    {"id": "thorny_devil", "name": "Thorny Devil", "biome": "Desert & Outback", "conservation": "LC"},
+    {"id": "kangaroo", "name": "Kangaroo", "biome": "Desert & Outback", "conservation": "LC"},
+    {"id": "black_footed_rock_wallaby", "name": "Black-Footed Rock Wallaby", "biome": "Desert & Outback", "conservation": "VU"},
+    {"id": "camel", "name": "Camel", "biome": "Desert & Outback", "conservation": "EN"},
+    {"id": "koala", "name": "Koala", "biome": "Desert & Outback", "conservation": "EN"},
+    {"id": "tree_kangaroo", "name": "Tree Kangaroo", "biome": "Desert & Outback", "conservation": "EN"},
+    {"id": "dimetrodon", "name": "Dimetrodon", "biome": "Desert & Outback", "conservation": "EX"},
+    {"id": "velociraptor", "name": "Velociraptor", "biome": "Desert & Outback", "conservation": "EX"},
 ]
-
-assert len(_RAW_ANIMALS) == 30
 
 POINTS_PER_LEVEL = 2  # skill points granted per level (see leveling.get_progress)
 
@@ -202,19 +256,24 @@ def _build_catalog() -> List[Dict[str, Any]]:
         ordered = sorted(group, key=lambda r: _CONSERVATION_RANK[r["conservation"]])
         for raw in ordered:
             tier = raw["conservation"]
-            idle, blink = sprite_templates.build_sprite_frames(raw["template"], raw["pattern"], raw["id"])
-            idle_frame = sprite_templates.grid_to_strings(idle)
-            blink_frame = sprite_templates.grid_to_strings(blink)
 
             idle_file = _find_sprite_file(raw["id"], "idle")
             blink_file = _find_sprite_file(raw["id"], "blink")
+            idle_frame = blink_frame = None
             if idle_file:
                 idle_uri = sprite_render.file_data_uri(idle_file)
                 # Blink frame is optional -- reuse idle art (no blink animation) if absent.
                 blink_uri = sprite_render.file_data_uri(blink_file) if blink_file else idle_uri
             else:
-                idle_uri = sprite_render.sprite_data_uri(idle_frame, raw["palette"])
-                blink_uri = sprite_render.sprite_data_uri(blink_frame, raw["palette"])
+                # No hand-authored art yet -- fall back to procedural placeholder art.
+                idle, blink = sprite_templates.build_sprite_frames(
+                    raw.get("template", "mammal"), raw.get("pattern", "none"), raw["id"]
+                )
+                idle_frame = sprite_templates.grid_to_strings(idle)
+                blink_frame = sprite_templates.grid_to_strings(blink)
+                palette = raw.get("palette", {})
+                idle_uri = sprite_render.sprite_data_uri(idle_frame, palette)
+                blink_uri = sprite_render.sprite_data_uri(blink_frame, palette)
 
             catalog.append({
                 "id": raw["id"],
@@ -231,7 +290,8 @@ def _build_catalog() -> List[Dict[str, Any]]:
                 "skill_cost": SKILL_COST[tier],
                 "cost_coins": COIN_COST[tier],
                 "rarity": _RARITY_FOR_TIER.get(tier, "common"),
-                "palette": raw["palette"],
+                "min_level": EX_MIN_LEVEL.get(biome, 0) if tier == "EX" else 0,
+                "palette": raw.get("palette"),
                 "sprite_idle": idle_frame,
                 "sprite_blink": blink_frame,
                 "sprite_idle_uri": idle_uri,
@@ -291,6 +351,10 @@ def biome_stars(unlocked: List[str]) -> Dict[str, int]:
     return totals
 
 
-def tier_accessible(animal: Dict[str, Any], unlocked: List[str]) -> bool:
-    """A tier is reachable once the biome holds enough stars for its threshold."""
+def tier_accessible(animal: Dict[str, Any], unlocked: List[str], level: int = 0) -> bool:
+    """A tier is reachable once the biome holds enough stars for its threshold.
+    The EX (Extinct) tier additionally requires the player to have reached its
+    biome's minimum level, regardless of stars."""
+    if animal["conservation"] == "EX" and level < EX_MIN_LEVEL.get(animal["biome"], 0):
+        return False
     return biome_stars(unlocked).get(animal["biome"], 0) >= animal["tier_threshold"]

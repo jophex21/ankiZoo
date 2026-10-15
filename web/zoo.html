@@ -20,10 +20,24 @@
 
     <main class="az-main">
         <section id="az-tab-zoo" class="az-tab-panel active">
-            <div class="az-map">
-                <div class="az-map-title">Your Zoo</div>
-                <div class="az-map-clouds"></div>
-                <div class="az-grid" id="az-grid"></div>
+            <div class="az-stage" id="az-stage">
+                <div class="az-map-canvas" id="az-map-canvas"></div>
+                <div class="az-map-key">
+                    <span class="az-key-title">Park Map</span>
+                    <span class="az-key-tally" id="az-map-tally"></span>
+                    <ul class="az-key-list">
+                        <li><span class="az-key-sw az-key-sw-exhibit"></span>Enclosure open</li>
+                        <li><span class="az-key-sw az-key-sw-tape"></span>Under construction</li>
+                        <li><span class="az-key-sw az-key-sw-buyable"></span><span id="az-map-key-cost">For sale</span></li>
+                        <li><span class="az-key-sw az-key-sw-locked"></span>Not yet surveyed</li>
+                    </ul>
+                    <div class="az-map-hud">
+                        <button type="button" id="az-map-out" aria-label="Zoom out"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 6h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <button type="button" id="az-map-in" aria-label="Zoom in"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <button type="button" id="az-map-fit">Overview</button>
+                    </div>
+                    <span class="az-key-hint">Drag to pan &middot; scroll to zoom</span>
+                </div>
             </div>
         </section>
         <section id="az-tab-collection" class="az-tab-panel">
@@ -66,6 +80,40 @@
                     <input type="text" class="az-color-hex" id="az-color-questDone-hex" placeholder="#RRGGBB">
                     <button type="button" class="az-color-swatch" id="az-color-questDone-swatch"></button>
                 </div>
+
+                <h3>Zoo Window</h3>
+                <div id="az-style-rows-zoo"></div>
+
+                <h3>Pomodoro Timer</h3>
+                <label class="az-color-row">
+                    <span class="az-color-label">Show timer during reviews</span>
+                    <input type="checkbox" id="az-toggle-pomodoro">
+                </label>
+                <label class="az-color-row">
+                    <span class="az-color-label">Length (minutes)</span>
+                    <input type="number" class="az-color-hex" id="az-pomo-minutes" min="1" max="180" step="1">
+                </label>
+                <div id="az-style-rows-pomo"></div>
+
+                <h3>Review Screen</h3>
+                <label class="az-color-row">
+                    <span class="az-color-label">Show ankiZoo header</span>
+                    <input type="checkbox" id="az-toggle-header">
+                </label>
+                <div id="az-style-rows-chip"></div>
+
+                <h3>Appearance Presets</h3>
+                <p>Save the Zoo window, timer and header appearance above as a preset, switch between presets, or go back to the defaults.</p>
+                <div class="az-color-row">
+                    <input type="text" class="az-color-hex az-preset-input" id="az-preset-name" placeholder="Preset name" maxlength="40">
+                    <button type="button" class="az-small-btn" id="az-preset-save">Save preset</button>
+                </div>
+                <div class="az-color-row">
+                    <select class="az-color-hex az-select az-preset-input" id="az-preset-select"></select>
+                    <button type="button" class="az-small-btn" id="az-preset-load">Load</button>
+                    <button type="button" class="az-small-btn az-small-btn-danger" id="az-preset-delete">Delete</button>
+                </div>
+                <button type="button" class="az-small-btn az-style-reset" id="az-style-reset">Reset appearance to defaults</button>
 
                 <h3>Reset Progress</h3>
                 <p>Permanently erases your XP, coins, unlocked animals, zoo layout, and quests for this profile. This cannot be undone.</p>

@@ -104,3 +104,32 @@ def file_data_uri(path: str) -> str:
     with open(path, "rb") as f:
         encoded = base64.b64encode(f.read()).decode("ascii")
     return f"data:{mime or 'application/octet-stream'};base64,{encoded}"
+
+
+def scaled_png_data_uri(path: str, width: int) -> str:
+    """Downscale an image to `width` px and return a PNG data URI.
+
+    For large source art (e.g. the 2048px coin icon) that only ever renders a
+    dozen pixels wide, so we don't inline the multi-MB original into every
+    webview payload. Falls back to the raw file if Qt can't load it.
+    """
+    import os
+    import tempfile
+    from aqt.qt import QImage
+
+    img = QImage(path)
+    if img.isNull():
+        return file_data_uri(path)
+    scaled = img.scaledToWidth(width)  # default transform; browser resamples anyway
+    fd, tmp = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        scaled.save(tmp, "PNG")
+        with open(tmp, "rb") as f:
+            data = f.read()
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
